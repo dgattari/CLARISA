@@ -43,9 +43,6 @@ import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from sklearn.model_selection import StratifiedShuffleSplit, GroupShuffleSplit
 from sklearn.metrics import roc_curve, roc_auc_score, average_precision_score, precision_score, recall_score
-
-
-
 import MARTATRAIN8_256_s as base  # utilidades del usuario
 
 # =========================

@@ -7,8 +7,8 @@ Entrena múltiples configuraciones SIN CV (split 90/10 estratificado), comparand
   2) Cabezas MLP: hidden ∈ {256,128,64} con activación SilU y Dropout ∈ {0.3, 0.5}
 
 Además permite elegir la ENTRADA entre:
-  - '256'  : ROI de 256×256 centrada en el bbox → resize 384×384 → 3 canales
-  - '384'  : ROI de 384×384 centrada en el bbox → resize 384×384 → 3 canales
+  - '256'  : ROI de 256x256 centrada en el bbox → resize 384x384 → 3 canales
+  - '384'  : ROI de 384x384 centrada en el bbox → resize 384x384 → 3 canales
   - 'stack': usa **ambas** (256 y 384). Dos opciones de fusión:
         * 'dual'  : dos flujos con backbone compartido; concatena features  → mantiene preentrenamiento 3ch
         * 'stack6': apila ambas imágenes (6 canales) y adapta el primer conv  → más simple pero pierde calce exacto de pesos preentrenados en la 1ª capa
@@ -101,6 +101,7 @@ class MultiInputROIDataset(Dataset):
         self.mode = input_mode
         self.augment = augment
         self.resize_to = resize_to
+
         if augment:
             self.tf = A.ReplayCompose([
                 A.HorizontalFlip(p=0.5),
@@ -161,8 +162,6 @@ class MultiInputROIDataset(Dataset):
         else:
             raise ValueError("input_mode debe ser '256', '384' o 'stack'")
             
-            
-
 # =========================
 # ====== MODELOS ==========
 # =========================
@@ -380,8 +379,6 @@ def make_splits(samples: List[Dict[str,Any]], y: np.ndarray):
     tr_idx = idx[(~va_mask) & (~te_mask)]
 
     return tr_idx, va_idx, te_idx
-
-
 
 def make_loaders(samples, tr_idx, va_idx, input_mode):
     tr_s = [samples[i] for i in tr_idx]; va_s = [samples[i] for i in va_idx]
@@ -775,9 +772,6 @@ if __name__ == "__main__":
         })
     df = pd.DataFrame(rows).sort_values("test_pr_auc", ascending=False)  # o test_roc_auc
     df.to_csv(base_dir / "metrics_summary.csv", index=False)
-
-
-
     print("== LISTO ==")
     print("Base dir:", base_dir.resolve())
     print("ROC comparativa:", out_cmp.resolve())

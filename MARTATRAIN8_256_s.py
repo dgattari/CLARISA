@@ -76,16 +76,25 @@ torch.backends.cudnn.benchmark = True  # perf óptima con tamaños fijos
 # ======== CONFIG ==========
 # ==========================
 # Directorio raíz con los .spydata y los .tif
-DATA_ROOT = Path('.')  # cambiar si es necesario
+DATA_ROOT = Path('.')  # cambiar si es necesario 
+
+# Carpetas del dataset
+DATASET_DIR = DATA_ROOT / "dataset"
+IMAGES_DIR = DATA_ROOT / "images"
 
 # Directorio de resultados/experimentos
 EXPERIMENTS_DIR = Path('experiments/MARTA_256')
 EXPERIMENTS_DIR.mkdir(parents=True, exist_ok=True)
+
 RESULTS_XLSX = EXPERIMENTS_DIR / 'results_total.xlsx'
 
 # Descubrimiento de datos: patrón exacto de nombres
 SPYDATA_REGEX = re.compile(r'^IM(\d+)\s+Dani\s+conexina2\.spydata$', re.IGNORECASE)
-TIF_TEMPLATE   = 'im{n}.tif'  # todo minúscula "im"
+
+# Extensiones de imagen soportadas automáticamente
+IMAGE_EXTENSIONS = [".png", ".tif", ".tiff", ".PNG", ".TIF", ".TIFF"]
+
+#TIF_TEMPLATE   = 'im{n}.tif'  # todo minúscula "im"
 
 # Split TEST
 TEST_SIZE = 0.15  # modificable
@@ -306,9 +315,35 @@ def safe_pickle_load(spy_path: Path) -> Any:
     except Exception:
         pass
 
+    # 6) TAR archive (.spydata en algunos casos)
+    try:
+        import tarfile
+
+        if tarfile.is_tarfile(spy_path):
+            with tarfile.open(spy_path, "r") as tar:
+                for member in tar.getmembers():
+
+                    if member.isfile():
+                        f = tar.extractfile(member)
+
+                        if f is None:
+                            continue
+
+                        try:
+                            return pickle.load(f)
+                        except Exception:
+                            try:
+                                import json
+                                return json.load(f)
+                            except Exception:
+                                continue
+
+            raise RuntimeError("TAR reconocido pero sin pickle/json legible dentro")
+
+    except Exception:
+        pass
+
     raise RuntimeError(f"No pude cargar {spy_path}: formato .spydata no reconocido (usé spyder_kernels, pickle, gzip, zip, joblib)")
-
-
 
 def extract_targets_from_spydata(spy_obj: Any) -> Tuple[List[Tuple[int,int,int,int]], List[Tuple[int,int,int,int]]]:
     """
@@ -370,23 +405,49 @@ def extract_targets_from_spydata(spy_obj: Any) -> Tuple[List[Tuple[int,int,int,i
 
     return norm_list(tr1), norm_list(tr2)
 
-
-
 def discover_image_pairs(data_root: Path) -> List[Tuple[Path, Path]]:
-    """Devuelve lista de pares (spydata_path, tif_path) para IM{n}*.spydata ↔ im{n}.tif"""
-    pairs = []
-    for p in data_root.iterdir():
-        if p.is_file() and SPYDATA_REGEX.match(p.name):
-            m = SPYDATA_REGEX.match(p.name)
-            n = m.group(1)
-            tif_path = data_root / TIF_TEMPLATE.format(n=n)
-            if tif_path.exists():
-                pairs.append((p, tif_path))
-    pairs.sort(key=lambda x: int(SPYDATA_REGEX.match(x[0].name).group(1)))
-    if not pairs:
-        raise RuntimeError(f"No se encontraron pares .spydata ↔ .tif en {data_root.resolve()}")
-    return pairs
+    """
+    Devuelve una lista de pares (spydata_path, image_path).
 
+    Empareja cada archivo .spydata en dataset/ con su imagen correspondiente
+    en images/, buscando automáticamente formatos compatibles (.png, .tif, .tiff).
+
+    Ejemplo:
+        dataset/IM6 Dani conexina2.spydata ↔ images/IM6.png
+    """
+
+    pairs = []
+
+    dataset_dir = DATASET_DIR
+    images_dir = IMAGES_DIR
+
+    for spy_path in dataset_dir.iterdir():
+
+        if spy_path.is_file() and SPYDATA_REGEX.match(spy_path.name):
+
+            match = SPYDATA_REGEX.match(spy_path.name)
+            n = match.group(1)
+
+            image_path = None
+
+            for ext in IMAGE_EXTENSIONS:
+                candidate = images_dir / f"IM{n}{ext}"
+                if candidate.exists():
+                    image_path = candidate
+                    break
+
+            if image_path is not None:
+                pairs.append((spy_path, image_path))
+
+    pairs.sort(key=lambda x: int(SPYDATA_REGEX.match(x[0].name).group(1)))
+
+    if not pairs:
+        raise RuntimeError(
+            f"No se encontraron pares .spydata ↔ imagen en "
+            f"{dataset_dir.resolve()} y {images_dir.resolve()}"
+        )
+
+    return pairs
 
 # ==========================
 # ===== DATASET/CROP =======
@@ -442,7 +503,6 @@ class ROIDataset(Dataset):
         tensor = out['image']
         label = int(s['label'])
         return tensor, label
-
 
 # ==========================
 # ======= MODELO ===========

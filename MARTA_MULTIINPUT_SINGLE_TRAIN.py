@@ -12,7 +12,7 @@ Además permite elegir la ENTRADA entre:
   - 'stack': usa **ambas** (256 y 384). Dos opciones de fusión:
         * 'dual'  : dos flujos con backbone compartido; concatena features  → mantiene preentrenamiento 3ch
         * 'stack6': apila ambas imágenes (6 canales) y adapta el primer conv  → más simple pero pierde calce exacto de pesos preentrenados en la 1ª capa
-
+x
 Salidas por corrida:
   - roc_<run>.png (curva AUC)
   - train_log_<run>.txt (paso a paso por época)
@@ -66,9 +66,9 @@ class CFG:
     fusion: str = 'dual'        # 'dual' o 'stack6' (sólo si input_mode='stack')
     resize_to: int = 384
     # Etapas
-    stage1_epochs: int = 10
-    stage2_epochs: int = 10
-    stage3_epochs: int = 10
+    stage1_epochs: int = 1
+    stage2_epochs: int = 1
+    stage3_epochs: int = 1
     k_unf: int = 1
     # LRs
     head_lr: float = 1e-3
@@ -709,18 +709,18 @@ if __name__ == "__main__":
     y_train = y[tr_idx_global]
     loaders = make_loaders(samples, tr_idx_global, va_idx_global, cfg.input_mode)
 
-
     # Runs
-    runs = [('logreg', None, None)]
-    runs = []
-    for d in [0.3, 0.5]:
-        for h in [256, 128, 64]:
-            runs.append(('mlp', h, d))
+    runs = [('mlp', 128, 0.5)]
+
+    # runs = [('logreg', None, None)]
+    # runs = []
+    # for d in [0.3, 0.5]:
+    #     for h in [256, 128, 64]:
+    #         runs.append(('mlp', h, d))
     #runs = []
     #for d in [0.5]:
     #    for h in [128]:
     #        runs.append(('mlp', h, d))
-
 
     curves = []
     ts = time.strftime("%Y%m%d_%H%M%S")

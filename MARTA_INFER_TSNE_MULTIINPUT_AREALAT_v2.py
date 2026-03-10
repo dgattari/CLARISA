@@ -631,7 +631,16 @@ def main():
 
         heat = p_blur / np.maximum(w_blur, 1e-8)
 
-    
+    else:
+        # mapa duro basado en clasificación
+        heat = np.zeros((h, w), dtype=np.float32)
+        
+        for cnt, r in zip(contours, results):
+            if r['final_label'] == 1:
+                cv2.drawContours(heat, [cnt], -1, 1.0, thickness=cv2.FILLED)
+            elif r['final_label'] == 0:
+                cv2.drawContours(heat, [cnt], -1, 0.0, thickness=cv2.FILLED)
+
     
     # % global sobre máscara de ROIs (conexina total)
     mask_roi = np.zeros((h, w), dtype=np.uint8)
@@ -670,7 +679,6 @@ def main():
     areaT_all = int((mask_roi > 0).sum())  # área total de conexina, incluye indecisos
     p_global_area = area1 / areaT_all if areaT_all > 0 else float('nan')
     print(f"[INFO] % área clase1/total (morf. dura): {p_global_area*100:.3f}%")
-
 
     # Guardar heatmap con barra (gris) y overlay color + barra (nuevo)
     heat_01 = (heat - np.nanmin(heat)) / max(1e-8, (np.nanmax(heat) - np.nanmin(heat)))

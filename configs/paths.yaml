@@ -1,0 +1,7 @@
+
+# configs/paths.yaml
+
+#data_root: /scratch/jsanchoz/MARTA/data
+dataset_dir: /scratch/jsanchoz/MARTA/data/dataset
+images_dir: /scratch/jsanchoz/MARTA/data/images
+experiments_dir: /scratch/jsanchoz/MARTA/experiments

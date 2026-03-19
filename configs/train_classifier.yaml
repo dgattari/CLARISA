@@ -1,0 +1,32 @@
+
+# configs/train_classifier.yaml
+
+random_seed: 42
+batch_size: 16
+num_workers: 1 
+val_size: 0.10 # proportion of data used for validation and test
+test_size: 0.10
+
+use_group_split: false # ensures ROIs from the same image stay in the same split (prevents leakage)
+group_key: image_path
+
+input_mode: stack # small ROI (local context), larger ROI (more context) or 'stack' that combines both
+fusion: dual # 'dual': two parallel streams (recommended) or 'stack6': 6-channel input (simpler, less standard)
+resize_to: 384
+
+stage1_epochs: 10 # training phases (frozen → partial → full)
+stage2_epochs: 10
+stage3_epochs: 10
+k_unf: 1 # number of backbone blocks unfrozen in stage 2
+ 
+head_lr: 0.001 # learning rates for different parts of the model
+last_lr: 0.0003
+rest_lr: 0.0001
+weight_decay: 0.0001
+
+class1_bonus: 1.1
+decision_threshold: 0.5
+
+head_kind: mlp # mlp or logreg
+hidden: 128 # size of hidden layer (MLP only)
+dropout: 0.5 # dropout probability (MLP only)

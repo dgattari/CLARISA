@@ -1,3 +1,5 @@
+# ./MARTA/MARTA_MULTIINPUT_SINGLE_TRAIN.py
+
 # -*- coding: utf-8 -*-
 """
 MARTA_MULTIINPUT_SINGLE_TRAIN.py
@@ -437,6 +439,7 @@ def param_groups(model: nn.Module, stage: int):
 
 #def train_one_run(base_dir: Path, head_kind: str, hidden: int|None, p_drop: float|None,
 #                  input_mode: str, fusion: str, loaders, y_train, va_idx_global, samples):
+
 def train_one_run(base_dir: Path, head_kind: str, hidden: int|None, p_drop: float|None,
                   input_mode: str, fusion: str, loaders, y_train, va_idx_global, te_idx_global, samples):
     run_name = f"{head_kind}{'' if hidden is None else '_'+str(hidden)}{'' if p_drop is None else f'_d{p_drop}'}"
@@ -599,6 +602,7 @@ def train_one_run(base_dir: Path, head_kind: str, hidden: int|None, p_drop: floa
 #    (run_dir / f"summary_{run_name}.json").write_text(json.dumps(summary, indent=2), encoding='utf-8')
 
 #    return {'fpr': fpr, 'tpr': tpr, 'auc': auc, 'label': run_name}
+    
     # ROC en TEST (split global fijo; val se usa para seleccionar checkpoint)
     for ckname in ['best_stage3_full.pth','best_stage2_last.pth','best_stage1_head.pth']:
         ck = run_dir / ckname

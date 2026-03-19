@@ -1,3 +1,5 @@
+
+# ./MARTA_INFER_TSNE_MULTIINPUT_AREALAT_v2.py
 # -*- coding: utf-8 -*-
 """
 MARTA_INFER_TSNE_MULTIINPUT_AREALAT.py
@@ -39,24 +41,24 @@ import plotly.graph_objs as go
 # Utilidades varias
 # ============================
 
-def ensure_dir(p: Path):
+def ensure_dir(p: Path): # check
     p.mkdir(parents=True, exist_ok=True)
 
-def softmax_np(z: np.ndarray) -> np.ndarray:
+def softmax_np(z: np.ndarray) -> np.ndarray: # check
     z = z - np.max(z, axis=-1, keepdims=True)
     e = np.exp(z)
     return e / np.sum(e, axis=-1, keepdims=True)
 
-IMAGENET_MEAN = (0.485, 0.456, 0.406)
+IMAGENET_MEAN = (0.485, 0.456, 0.406) # check 
 IMAGENET_STD  = (0.229, 0.224, 0.225)
 
-tf_resize_norm = A.Compose([
+tf_resize_norm = A.Compose([ # check 
     A.Resize(384, 384),
     A.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD),
     ToTensorV2(),
 ])
 
-def crop_center(img: np.ndarray, cx: int, cy: int, size: int) -> np.ndarray:
+def crop_center(img: np.ndarray, cx: int, cy: int, size: int) -> np.ndarray: # check 
     h, w = img.shape[:2]
     half = size // 2
     x1 = max(0, min(w - size, cx - half))
@@ -67,9 +69,9 @@ def crop_center(img: np.ndarray, cx: int, cy: int, size: int) -> np.ndarray:
 # Detector de regiones
 # ============================
 
-FULL_WINDOW = True
+FULL_WINDOW = True # check 
 
-def detect_all_regions(gray: np.ndarray, expand_pixels: int = 40):
+def detect_all_regions(gray: np.ndarray, expand_pixels: int = 40): # check 
     """Detector simple por umbral + morfología, devuelve bbox centrado."""
     #_, mask_all = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
     #kernel = np.ones((5, 5), np.uint8)
@@ -118,7 +120,7 @@ def detect_all_regions(gray: np.ndarray, expand_pixels: int = 40):
 # Construcción del modelo según checkpoint
 # ============================
 
-def build_backbone_3ch():
+def build_backbone_3ch(): # check 
     # num_classes=0 + global_pool='avg' → devuelve features (GAP)
     return create_model('tf_efficientnetv2_s', pretrained=True, num_classes=0, global_pool='avg')
 
@@ -146,6 +148,7 @@ def adapt_first_conv_to_in(backbone: nn.Module, in_ch: int):
             new_conv.weight[:] = 0.0
         if conv.bias is not None:
             new_conv.bias[:] = conv.bias.data
+    
     # Reemplazar
     parent = None
     for name, module in backbone.named_children():
@@ -161,7 +164,7 @@ def adapt_first_conv_to_in(backbone: nn.Module, in_ch: int):
 
 # ===== HeadMLP y build_head_from_state compatible con 'head.net.*' =====
 
-class HeadMLP(nn.Module):
+class HeadMLP(nn.Module):  # check 
     """Head MLP con submódulo .net para que las claves 'head.net.*' del checkpoint carguen directo."""
     def __init__(self, in_feats: int, hidden: int, p_drop: float = 0.5, out_dim: int = 1):
         super().__init__()
@@ -174,7 +177,7 @@ class HeadMLP(nn.Module):
     def forward(self, x):
         return self.net(x)
 
-def build_head_from_state(state: Dict[str, torch.Tensor], in_feats: int) -> nn.Module:
+def build_head_from_state(state: Dict[str, torch.Tensor], in_feats: int) -> nn.Module: # check 
     # Si el checkpoint trae 'head.net.*' → construyo HeadMLP con submódulo .net
     has_net = any(k.startswith('head.net.') for k in state.keys())
     if has_net:
@@ -198,7 +201,7 @@ def build_head_from_state(state: Dict[str, torch.Tensor], in_feats: int) -> nn.M
     # Fallback
     return nn.Linear(in_feats, 1)
 
-class ModelSingle3ch(nn.Module):
+class ModelSingle3ch(nn.Module): # check 
     def __init__(self, head_state: Dict[str, torch.Tensor]):
         super().__init__()
         self.backbone = build_backbone_3ch()
@@ -214,7 +217,7 @@ class ModelSingle3ch(nn.Module):
     def forward_feats(self, x):
         return self.backbone(x)
 
-class ModelStack6Single(nn.Module):
+class ModelStack6Single(nn.Module): # check 
     def __init__(self, head_state: Dict[str, torch.Tensor]):
         super().__init__()
         self.backbone = build_backbone_3ch()
@@ -231,7 +234,7 @@ class ModelStack6Single(nn.Module):
     def forward_feats(self, x6):
         return self.backbone(x6)
 
-class ModelDualShared(nn.Module):
+class ModelDualShared(nn.Module): # check 
     def __init__(self, head_state: Dict[str, torch.Tensor]):
         super().__init__()
         self.backbone = build_backbone_3ch()
@@ -254,7 +257,7 @@ class ModelDualShared(nn.Module):
         f2 = self.backbone(x384)
         return torch.cat([f1, f2], dim=1)
 
-def load_model_from_ckpt(ckpt_path: Path, device: torch.device):
+def load_model_from_ckpt(ckpt_path: Path, device: torch.device): # check 
     # C) weights_only=True para silenciar el FutureWarning
     sd = torch.load(ckpt_path, map_location=device, weights_only=True)
     state = sd.get('model', sd)
@@ -290,7 +293,7 @@ def load_model_from_ckpt(ckpt_path: Path, device: torch.device):
 # Plotly helpers (TSNE + buscador) — FIX de etiquetas
 # ============================
 
-def write_tsne_html_with_search(out_html: Path, df_tsne: pd.DataFrame, title: str):
+def write_tsne_html_with_search(out_html: Path, df_tsne: pd.DataFrame, title: str): # check 
     colors = df_tsne['final_label'].map({-1:'#2ca02c', 0:'#1f77b4', 1:'#d62728'}).fillna('#7f7f7f')
     text = [
         f"idx={int(r.idx)} | label={int(r.final_label)} | max={float(r.max_prob):.3f}"
@@ -368,11 +371,11 @@ gd.on('plotly_click', function(ev) {{
 # Heatmap y overlays
 # ============================
 
-def gaussian2d(h, w, cx, cy, sigma):
+def gaussian2d(h, w, cx, cy, sigma): # check 
     yy, xx = np.mgrid[0:h, 0:w]
     return np.exp(-((xx-cx)**2 + (yy-cy)**2)/(2*sigma*sigma))
 
-def attach_colorbar_right_gray(img_gray_0_1: np.ndarray, vmin=0.0, vmax=1.0, height=None):
+def attach_colorbar_right_gray(img_gray_0_1: np.ndarray, vmin=0.0, vmax=1.0, height=None): # check 
     """Barra vertical 0-1 (gris) concatenada a la derecha de una imagen GRIS."""
     if height is None:
         height = img_gray_0_1.shape[0]
@@ -386,7 +389,7 @@ def attach_colorbar_right_gray(img_gray_0_1: np.ndarray, vmin=0.0, vmax=1.0, hei
     out = np.concatenate([heat_rgb, bar_rgb], axis=1)
     return out
 
-def attach_colorbar_right_rgb(overlay_bgr: np.ndarray, vmin=0.0, vmax=1.0):
+def attach_colorbar_right_rgb(overlay_bgr: np.ndarray, vmin=0.0, vmax=1.0): # check 
     """Genera una barra vertical TURBO 0-1 y la concatena a la derecha de una imagen RGB/BGR."""
     h = overlay_bgr.shape[0]
     bar = np.linspace(1.0, 0.0, h).reshape(h, 1)
@@ -399,6 +402,8 @@ def attach_colorbar_right_rgb(overlay_bgr: np.ndarray, vmin=0.0, vmax=1.0):
 # ============================
 # Principal
 # ============================
+
+# El main() original de Dani mezcla 10 responsabilidades. Hay que romperlo en funciones con fronteras claras.
 
 def main():
     ap = argparse.ArgumentParser()
@@ -414,7 +419,7 @@ def main():
 
     outdir = Path(args.outdir); ensure_dir(outdir)
 
-    # Imagen
+    # Imagen (check)
     image = cv2.imread(args.image, cv2.IMREAD_COLOR)
     if image is None:
         raise FileNotFoundError(f"No pude leer: {args.image}")

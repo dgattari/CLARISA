@@ -1,3 +1,5 @@
+
+# ./MARTA/MARTA_INFER_BATCH_GRID.py
 #!/usr/bin/env python3
 from pathlib import Path
 import argparse, sys, os, re, json, subprocess
@@ -6,21 +8,23 @@ import numpy as np
 
 SCRIPT_SINGLE = "MARTA_INFER_TSNE_MULTIINPUT_AREALAT_v2.py"
 
-GRID_ORDER = [
+GRID_ORDER = [ # check 
     [1, 2, 3],
     [4, 5, 6],
     [11, 12, 13],
     [14, 15, 16],
 ]
 
-def natural_key(path: Path):
+def natural_key(path: Path): # check
     m = re.search(r"seccion_(\d+)", path.stem, re.IGNORECASE)
     if m:
         return (0, int(m.group(1)))
     return (1, path.name.lower())
 
-def ensure_dir(p: Path):
+def ensure_dir(p: Path): # check 
     p.mkdir(parents=True, exist_ok=True)
+
+# check 
 def run_single_infer(img_path: Path, ckpt: Path, outdir_section: Path,
                      threshold: float, perplexity: float, soft: bool, sigma: float):
     ensure_dir(outdir_section)

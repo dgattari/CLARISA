@@ -75,7 +75,7 @@ python -m src.train.train_classifier --config configs/train_classifier.yaml
 This will:
 * build ROI samples from `.spydata`
 * split data into train / validation / test
-* train the model in 3 stages (freeze → partial unfreeze → full)
+* train the model in 3 stages (freeze → partial unfreeze → full unfreeze)
 * select the best checkpoint by validation loss
 * evaluate the selected checkpoint on the test set
 * export metrics, logs and ROC curve
@@ -99,11 +99,10 @@ dropout: 0.5
 Outputs are saved in:
 
 ```
-experiments/MARTA_MULTIINPUT_SINGLE/<run_name_timestamp>/
+experiments/marta_classifier/<run_name_timestamp>/
 ```
 
 Typical outputs include:
-
 - `config.json`
 - `split_info.json`
 - `best_stage*.pth`
@@ -149,6 +148,13 @@ Main parameters:
 * `head_kind`: `mlp` | `logreg`
 * `hidden`: hidden layer size for MLP heaad
 * `dropout`: dropout probability for MLP head
+
+### Optional expert tracking
+Advanced experiment tracking is available through an optional expert mode for users who want W&B monitoring, artifact logging and easier comparison across runs.
+
+See:
+
+`docs/EXPERT_TRACKING.md`
 
 ---
 

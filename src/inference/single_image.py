@@ -29,12 +29,14 @@ import torch
 
 from src.utils.io import ensure_dir
 from src.utils.config import load_inference_config
+from src.utils.logging import log
 from src.preprocessing.roi_detection import detect_all_regions
 from .model_loader import load_model_from_ckpt
 from .roi_inference import (
     load_image_and_gray,
     run_roi_inference,
 )
+
 from .analysis import (
     save_roi_results_table,
     save_classification_overlay,
@@ -68,24 +70,36 @@ def run_single_image_inference(
     outdir: Path,
     config_path: str | Path = "configs/inference.yaml",
 ):
+    log_fp = outdir / "inference_log.txt"
+    log("[infer] Starting single-image inference", log_fp)
+    log(f"[infer] Image path: {image_path}", log_fp)
+    log(f"[infer] Checkpoint path: {ckpt_path}", log_fp)
+    log(f"[infer] Output directory: {outdir}", log_fp)
+    log(f"[infer] Config path: {config_path}", log_fp)
+
+    log("[infer] Loading inference config", log_fp)
     infer_cfg = load_inference_config(config_path)
     ensure_dir(outdir)
-
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    log(f"[infer] Device: {device}", log_fp)
 
+    log("[image] Loading input image", log_fp)
     image_bgr, gray = load_image_and_gray(image_path)
 
+    log("[roi] Detecting candidate regions", log_fp)
     _, rois, areas, contours = detect_all_regions(
         gray,
         expand_pixels=infer_cfg.expand,
     )
-    print(f"Regiones detectadas: {len(rois)}")
+    log(f"[roi] Regions detected: {len(rois)}", log_fp)
 
+    log("[model] Loading trained checkpoint", log_fp)
     model, train_cfg = load_model_from_ckpt(ckpt_path=ckpt_path, device=device)
     input_mode = train_cfg.get("input_mode", "256")
     fusion = train_cfg.get("fusion", "single")
-    print(f"[INFO] input_mode={input_mode} fusion={fusion}")
+    log(f"[model] input_mode={input_mode} fusion={fusion}", log_fp)
 
+    log("[infer] Running ROI-level inference", log_fp)
     results, feats_all = run_roi_inference(
         image_bgr=image_bgr,
         rois=rois,
@@ -94,16 +108,22 @@ def run_single_image_inference(
         infer_cfg=infer_cfg,
         device=device,
     )
-
+    log(f"[infer] Number of ROIs to process: {len(rois)}", log_fp)
+    
     base_name = image_path.stem
 
+    log("[io] Saving ROI results table", log_fp)
     csv_path, xlsx_path, df_results = save_roi_results_table(
         results=results,
         outdir=outdir,
         base_name=base_name,
         save_excel=infer_cfg.save_excel,
     )
+    log(f"[io] CSV path: {csv_path}", log_fp)
+    if xlsx_path is not None:
+        log(f"[io] XLSX path: {xlsx_path}", log_fp)
 
+    log("[viz] Saving classification overlay", log_fp)
     overlay_path = save_classification_overlay(
         image_bgr=image_bgr,
         contours=contours,
@@ -111,7 +131,9 @@ def run_single_image_inference(
         outdir=outdir,
         base_name=base_name,
     )
+    log(f"[viz] Overlay path: {overlay_path}", log_fp)
 
+    log("[viz] Saving interactive ROI HTML", log_fp)
     html_img_path = save_interactive_roi_html(
         image_bgr=image_bgr,
         df_results=df_results,
@@ -120,7 +142,9 @@ def run_single_image_inference(
         input_mode=input_mode,
         fusion=fusion,
     )
+    log(f"[viz] HTML path: {html_img_path}", log_fp)
 
+    log("[tsne] Running t-SNE analysis", log_fp)
     _, tsne_csv_path, tsne_html_path = run_tsne_analysis(
         feats_all=feats_all,
         results=results,
@@ -131,7 +155,10 @@ def run_single_image_inference(
         fusion=fusion,
         random_seed=infer_cfg.random_seed,
     )
+    log(f"[tsne] Perplexity: {infer_cfg.perplexity}", log_fp)
+    log(f"[tsne] HTML path: {tsne_html_path}", log_fp)
 
+    log("[heatmap] Building lateralization heatmap", log_fp)
     heat = build_lateralization_heatmap(
         image_shape=image_bgr.shape[:2],
         contours=contours,
@@ -140,6 +167,7 @@ def run_single_image_inference(
         sigma=infer_cfg.sigma,
     )
 
+    log("[heatmap] Computing global lateralization metrics", log_fp)
     global_metrics = compute_global_lateralization_metrics(
         heat=heat,
         contours=contours,
@@ -154,7 +182,10 @@ def run_single_image_inference(
         outdir=outdir,
         base_name=base_name,
     )
+    log(f"[heatmap] Heatmap path: {heatmap_path}", log_fp)
+    log(f"[heatmap] Overlay path: {lcr_overlay_path}", log_fp)
 
+    log("[io] Saving inference summary", log_fp)
     summary = build_inference_summary(
         image_path=image_path,
         ckpt_path=ckpt_path,
@@ -175,8 +206,8 @@ def run_single_image_inference(
         lcr_overlay_path=lcr_overlay_path,
         global_metrics=global_metrics,
     )
-
     save_summary_json(summary, outdir)
+    log(f"[io] Summary path: {outdir / 'summary.json'}", log_fp)
 
     print("\n== LISTO ==")
     for key, value in summary.items():

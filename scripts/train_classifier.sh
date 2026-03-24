@@ -18,21 +18,42 @@ module purge
 module load Miniforge3
 
 # Go to repository root
-cd /scratch/jsanchoz/MARTA || exit 1 # change this
+cd /scratch/jsanchoz/MARTA || exit 1 # change this path
 
 # Activate conda environment
 source "$(conda info --base)/etc/profile.d/conda.sh"
-conda activate marta || exit 1
+conda activate /home/jsanchoz/.conda/envs/marta || exit 1
+
+export PYTHONUNBUFFERED=1
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+# Optional: load W&B secret if present
+if [ -f /scratch/jsanchoz/MARTA/scripts/secrets/wandb.env ]; then
+    echo "Loading optional W&B environment variables"
+    source /scratch/jsanchoz/MARTA/scripts/secrets/wandb.env # change this path
+fi
+
+cleanup_wandb() {
+    echo "Cleaning W&B cache directories..."
+    rm -rf /scratch/jsanchoz/MARTA/.wandb_cache/*
+    rm -rf /scratch/jsanchoz/MARTA/.wandb_data/*
+    rm -rf /scratch/jsanchoz/MARTA/.wandb_artifacts/*
+}
+
+trap cleanup_wandb EXIT
 
 echo "Python: $(which python)"
 python --version
 echo "CUDA devices: $CUDA_VISIBLE_DEVICES"
 
-export PYTHONUNBUFFERED=1
-export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+python3.10 -c "import src; print('src package found')"
+python3.10 -c "import albumentations; print('albumentations ok')"
 
-python -c "import src; print('src package found')"
-python -m src.train.train_classifier \
+echo "Training config: configs/train_classifier.yaml"
+echo "Expert mode setting:"
+grep -E "^expert_mode:" configs/train_classifier.yaml || true
+
+python3.10 -m src.train.train_classifier \
     --config configs/train_classifier.yaml
 
 echo "========================================"

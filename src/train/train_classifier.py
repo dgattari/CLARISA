@@ -46,6 +46,7 @@ import argparse
 import json
 import time
 from pathlib import Path
+
 import pandas as pd
 import torch
 
@@ -57,8 +58,16 @@ from .evaluation import evaluate_saved_checkpoint
 from src.utils.config import load_train_config, build_train_run_name
 from src.utils.seed import set_global_seed
 from src.utils.plots import save_roc_curve
+from src.utils.wandb_utils import (
+    init_wandb_run, 
+    log_metrics,
+    log_artifact_file,
+    finish_wandb
 
-EXPERIMENTS_DIR = Path("experiments/MARTA_MULTIINPUT_SINGLE")
+)
+from src.utils.logging import log
+
+EXPERIMENTS_DIR = Path("experiments/marta_classifier")
 EXPERIMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
 def parse_args():
@@ -80,13 +89,31 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # ======================
+    # Output dir + log file
+    # ======================
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    run_name = build_train_run_name(cfg)
+    base_dir = EXPERIMENTS_DIR / f"{run_name}_{ts}"
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    log_fp = base_dir / f"train_log_{run_name}.txt"
+
+    log("[train] Loading training config", log_fp)
+    log(f"[train] Config path: {config_path}", log_fp)
+    log(f"[train] Device: {device}", log_fp)
+    log(f"[io] Run directory: {base_dir}", log_fp)
+
+    # ======================
     # Dataset
     # ======================
+    log("[data] Building ROI samples from annotations", log_fp)
     samples, y = build_samples()
+    log(f"[data] Total samples built: {len(samples)}", log_fp)
 
     # ======================
     # Splits
     # ======================
+    log("[split] Creating train/val/test split", log_fp)
     train_idx, val_idx, test_idx = make_splits(
         samples=samples,
         y=y,
@@ -103,19 +130,22 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
         "test_idx": test_idx,
     }
 
-    # ======================
-    # Output dir
-    # ======================
-    ts = time.strftime("%Y%m%d_%H%M%S")
-    run_name = build_train_run_name(cfg)
-    base_dir = EXPERIMENTS_DIR / f"{run_name}_{ts}"
-    base_dir.mkdir(parents=True, exist_ok=True)
+    log(
+        f"[split] Sizes | train={len(train_idx)} val={len(val_idx)} test={len(test_idx)}",
+        log_fp,
+    )
+    log(
+        f"[split] Group split: enabled={cfg.use_group_split} group_key={cfg.group_key}",
+        log_fp,
+    )
 
-    # Guardar config usada
+    # ======================
+    # Save config / split info
+    # ======================
+    log("[io] Saving config and split metadata", log_fp)
     with (base_dir / "config.json").open("w", encoding="utf-8") as f:
         json.dump(cfg.__dict__, f, indent=2)
 
-    # Guardar split sizes
     split_info = {
         "n_total": int(len(samples)),
         "n_train": int(len(train_idx)),
@@ -126,20 +156,42 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
         json.dump(split_info, f, indent=2)
 
     # ======================
+    # W&B init (opcional)
+    # ======================
+    run = init_wandb_run(
+        cfg=cfg,
+        run_name=run_name,
+        output_dir=base_dir,
+        extra_config={"output_dir": str(base_dir.resolve())},
+    )
+
+    log_metrics({
+        "data/n_total": split_info["n_total"],
+        "data/n_train": split_info["n_train"],
+        "data/n_val": split_info["n_val"],
+        "data/n_test": split_info["n_test"],
+    })
+
+    # ======================
     # Training
     # ======================
+    log("[train] Starting classifier training", log_fp)
     train_result = train_model(  
         cfg=cfg,
         samples=samples,
         split_indices=split_indices,
         output_dir=base_dir,
         run_name=run_name,
-        device=device
+        device=device,
+        log_fp=log_fp
     )
 
-    # ======================
-    # Evaluación final en test  
-    # ======================
+    # ========================
+    # Final evaluation on test
+    # ========================
+    log("[eval] Evaluating best checkpoint on test split", log_fp)
+    log(f"[eval] Best checkpoint: {train_result['best_ckpt']}", log_fp)
+
     eval_result = evaluate_saved_checkpoint(
         ckpt_path=train_result["best_ckpt"],
         cfg=cfg,
@@ -153,8 +205,9 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
     tpr = eval_result["tpr"]
 
     # ======================
-    # Guardar ROC test
+    # Save test ROC
     # ======================
+    log("[io] Saving ROC curve and final summaries", log_fp)
     roc_path = base_dir / "roc_test.png"
     save_roc_curve(
         fpr=fpr,
@@ -165,7 +218,7 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
     )
 
     # ======================
-    # Summary final
+    # Final summary
     # ======================
     summary = {
         "run_dir": str(base_dir.resolve()),
@@ -183,12 +236,14 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
         "split_info": split_info,
         "config": cfg.__dict__,
     }
-
-    with (base_dir / "summary.json").open("w", encoding="utf-8") as f:
+    
+    summary_path = base_dir / "summary.json"
+    with summary_path.open("w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
+    log(f"[io] Summary path: {summary_path}", log_fp)
 
     # ======================
-    # CSV resumen simple
+    # Simple CSV summary
     # ======================
     row = {
         "run_name": run_name,
@@ -207,8 +262,39 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
         "threshold": test_metrics["threshold"],
     }
 
-    pd.DataFrame([row]).to_csv(base_dir / "metrics_summary.csv", index=False)
+    metrics_csv_path = base_dir / "metrics_summary.csv"
+    pd.DataFrame([row]).to_csv(metrics_csv_path, index=False)
 
+    # ======================
+    # W&B final logs
+    # ======================
+    log_metrics({
+        "test/roc_auc": test_metrics["roc_auc"],
+        "test/pr_auc": test_metrics["pr_auc"],
+        "test/prec1": test_metrics["prec1"],
+        "test/rec1": test_metrics["rec1"],
+        "test/prec0": test_metrics["prec0"],
+        "test/rec0": test_metrics["rec0"],
+        "test/threshold": test_metrics["threshold"],
+    })
+
+    log_artifact_file(base_dir / "config.json", f"{run_name}-config", "config")
+    log_artifact_file(base_dir / "split_info.json", f"{run_name}-split-info", "metadata")
+    log_artifact_file(base_dir / "train_result.json", f"{run_name}-train-result", "result")
+    log_artifact_file(base_dir / "summary.json", f"{run_name}-summary", "result")
+    log_artifact_file(metrics_csv_path, f"{run_name}-metrics-summary", "table")
+    log_artifact_file(roc_path, f"{run_name}-roc-test", "plot")
+
+    finish_wandb(summary={
+        "best_stage": train_result["best_stage"],
+        "best_val_loss": train_result["best_val_metrics"].get("val_loss", None),
+        "best_val_auc": train_result["best_val_metrics"].get("auc", None),
+        "test_roc_auc": test_metrics["roc_auc"],
+        "test_pr_auc": test_metrics["pr_auc"],
+    })
+
+    log("[done] Training pipeline finished successfully", log_fp)
+    
     print("== LISTO ==")
     print("Base dir:", base_dir.resolve())
     print("Best checkpoint:", train_result["best_ckpt"])

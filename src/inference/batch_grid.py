@@ -24,6 +24,7 @@ import cv2
 import numpy as np
 
 from src.utils.io import ensure_dir
+from src.utils.logging import log
 from .single_image import run_single_image_inference
 
 GRID_ORDER = [
@@ -60,7 +61,16 @@ def run_batch_grid_inference(
         raise FileNotFoundError(f"Folder not found: {folder_images}")
 
     ensure_dir(outdir)
+    log_fp = outdir / "batch_inference_log.txt"
 
+    log("[batch] Starting batch inference", log_fp)
+    log(f"[batch] Input folder: {folder_images}", log_fp)
+    log(f"[batch] Checkpoint path: {ckpt_path}", log_fp)
+    log(f"[batch] Output directory: {outdir}", log_fp)
+    log(f"[batch] Config path: {config_path}", log_fp)
+
+    log("[batch] Discovering section images", log_fp)
+    
     images = sorted(
         [p for p in folder_images.iterdir() if p.suffix.lower() in [".tif", ".tiff", ".png", ".jpg", ".jpeg"]],
         key=natural_section_key,
@@ -69,7 +79,8 @@ def run_batch_grid_inference(
     if not images:
         raise RuntimeError(f"No images found in {folder_images}")
 
-    print(f"[INFO] Found {len(images)} images. First 5: {[p.name for p in images[:5]]}")
+    log(f"[batch] Images found: {len(images)}", log_fp)
+    log(f"[batch] First 5 images: {[p.name for p in images[:5]]}", log_fp)
 
     overlay_map: Dict[int, Path] = {}
 
@@ -78,6 +89,11 @@ def run_batch_grid_inference(
         match = re.search(r"seccion_(\d+)", base, re.IGNORECASE)
         section_num = int(match.group(1)) if match else None
 
+        if section_num is not None:
+            log(f"[section] Section number: {section_num}", log_fp)
+        else:
+            log(f"[section] No section number detected for {image_path.name}", log_fp)
+
         section_outdir = outdir / base
 
         overlay_path = run_single_section_inference(
@@ -85,13 +101,17 @@ def run_batch_grid_inference(
             ckpt_path=ckpt_path,
             outdir_section=section_outdir,
             config_path=config_path,
+            log_fp=log_fp,
         )
 
         if section_num is not None and overlay_path is not None:
             overlay_map[section_num] = overlay_path
 
+    
+    log("[grid] Building combined overlay grid", log_fp)
     grid_path = outdir / "combined_heatmaps_grid.jpg"
     build_grid_from_overlays(overlay_map=overlay_map, out_path=grid_path)
+    log(f"[grid] Output path: {grid_path}", log_fp)
 
     summary = {
         "folder_images": str(folder_images),
@@ -101,6 +121,7 @@ def run_batch_grid_inference(
         "grid_path": str(grid_path),
     }
 
+    log("[done] Batch inference finished successfully", log_fp)
     print(f"[OK] Combined grid saved to: {grid_path}")
     return summary
 
@@ -115,9 +136,11 @@ def run_single_section_inference(
     ckpt_path: Path,
     outdir_section: Path,
     config_path: Path,
+    log_fp: Path,
 ) -> Path | None:
     ensure_dir(outdir_section)
 
+    log(f"[section] Processing {image_path.name}", log_fp)
     summary = run_single_image_inference(
         image_path=image_path,
         ckpt_path=ckpt_path,
@@ -126,6 +149,10 @@ def run_single_section_inference(
     )
 
     overlay_path = summary.get("lcr_overlay", None)
+    log(f"[section] Finished {image_path.name}", log_fp)
+    if overlay_path is not None:
+        log(f"[section] LCR overlay path: {overlay_path}", log_fp)
+
     return Path(overlay_path) if overlay_path else None
 
 def build_grid_from_overlays(

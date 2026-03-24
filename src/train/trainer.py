@@ -18,6 +18,13 @@ from .evaluation import evaluate
 
 from src.utils.logging import log
 from src.utils.seed import set_global_seed
+from src.utils.wandb_utils import (
+    watch_model_if_needed,
+    log_metrics,
+    log_checkpoint_artifact,
+    batch_logging_enabled,
+    batch_log_every_steps,
+)
 
 """
 Nota de refactorización
@@ -60,9 +67,219 @@ def compute_pos_weight(y_train: np.ndarray, class1_bonus: float, device: torch.d
     pw = (n0 / max(1.0, n1)) * float(class1_bonus)
     return torch.tensor(pw, dtype=torch.float32, device=device)
 
+def _optimizer_lrs(opt):
+    out = {}
+    for i, group in enumerate(opt.param_groups):
+        out[f"lr/group_{i}"] = group["lr"]
+    return out
+
+def _log_epoch_metrics(stage, ep, global_epoch, tr_loss, ev, opt):
+    metrics = {
+        "train/loss": tr_loss,
+        "val/loss": ev["val_loss"],
+        "val/auc": ev["auc"],
+        "val/prec1": ev["prec1"],
+        "val/rec1": ev["rec1"],
+        "val/prec0": ev["prec0"],
+        "val/rec0": ev["rec0"],
+        "train/stage": stage,
+        "train/epoch_in_stage": ep,
+        "train/global_epoch": global_epoch,
+
+        # métricas separadas por fase
+        f"stage{stage}/train_loss": tr_loss,
+        f"stage{stage}/val_loss": ev["val_loss"],
+        f"stage{stage}/val_auc": ev["auc"],
+        f"stage{stage}/val_prec1": ev["prec1"],
+        f"stage{stage}/val_rec1": ev["rec1"],
+        f"stage{stage}/val_prec0": ev["prec0"],
+        f"stage{stage}/val_rec0": ev["rec0"],
+    }
+    metrics.update(_optimizer_lrs(opt))
+    log_metrics(metrics, step=global_epoch)
+    
+def _run_one_epoch_train(
+    *,
+    model,
+    loader,
+    device,
+    criterion,
+    optimizer,
+    stage: int,
+    global_step: int,
+    do_batch_logging: bool,
+    batch_log_freq: int,
+    run_name: str,
+    epoch_idx: int,
+    n_epochs: int,
+):
+    model.train()
+    tr_loss, n_tr = 0.0, 0 # acumuladores de pérdida
+
+    pbar = tqdm(
+        loader,
+        desc=f"[{run_name}][stage{stage}] Ep {epoch_idx}/{n_epochs}",
+        leave=False,
+    )
+
+    for imgs, lbl in pbar:
+        imgs = imgs.to(device, non_blocking=True)
+        y = lbl.float().to(device, non_blocking=True)
+
+        optimizer.zero_grad(set_to_none=True)
+        logits = model(imgs)  # salida cruda del modelo (sin limitar a [0,1]); representa una pre-probabilidad que BCEWithLogitsLoss transforma internamente con sigmoide
+        loss = criterion(logits, y)
+        loss.backward()
+        optimizer.step()
+
+        # Acumulas pérdida ponderada por número de meustras
+        bs = y.numel()
+        tr_loss += float(loss.item()) * bs
+        n_tr += bs
+
+        global_step += 1
+        if do_batch_logging and batch_log_freq > 0 and (global_step % batch_log_freq == 0):
+            log_metrics({
+                "train/batch_loss": float(loss.item()),
+                "train/stage": stage,
+                "train/global_step": global_step,
+            }, step=global_step)
+
+        pbar.set_postfix({"loss": f"{(tr_loss / max(1, n_tr)):.4f}"})
+
+    tr_loss = tr_loss / max(1, n_tr) # Cálculas pérdida media final de train
+    return tr_loss, global_step
+
+def run_training_stage(
+    *,
+    stage: int,
+    n_epochs: int,
+    model,
+    train_loader,
+    val_loader,
+    device,
+    criterion,
+    optimizer,
+    cfg,
+    pos_weight,
+    output_dir: Path,
+    run_name: str,
+    history: dict,
+    best_val: float,
+    best_stage: str | None,
+    best_ckpt_path: Path | None,
+    best_val_metrics: Dict[str, Any],
+    global_epoch: int,
+    global_step: int,
+    log_fp: Path,
+    do_batch_logging: bool,
+    batch_log_freq: int,
+    ckpt_filename: str,
+):
+    """
+    Ejecuta un stage completo de entrenamiento:
+      - epochs de train
+      - validación
+      - logging
+      - guardado de mejor checkpoint
+
+    Devuelve el estado actualizado del entrenamiento.
+    """
+    if n_epochs <= 0:
+        return {
+            "best_val": best_val,
+            "best_stage": best_stage,
+            "best_ckpt_path": best_ckpt_path,
+            "best_val_metrics": best_val_metrics,
+            "global_epoch": global_epoch,
+            "global_step": global_step,
+        }
+
+    for ep in range(1, n_epochs + 1):
+        tr_loss, global_step = _run_one_epoch_train(
+            model=model,
+            loader=train_loader,
+            device=device,
+            criterion=criterion,
+            optimizer=optimizer,
+            stage=stage,
+            global_step=global_step,
+            do_batch_logging=do_batch_logging,
+            batch_log_freq=batch_log_freq,
+            run_name=run_name,
+            epoch_idx=ep,
+            n_epochs=n_epochs,
+        )
+
+        ev = evaluate(
+            model=model,
+            loader=val_loader,
+            device=device,
+            threshold=cfg.decision_threshold,
+            pos_weight=pos_weight,
+        ) # Evalúas en validation
+
+        history["train_loss"].append(tr_loss)
+        history["val_loss"].append(ev["val_loss"])
+        history["val_auc"].append(ev["auc"])
+        history["val_prec1"].append(ev["prec1"])
+        history["val_rec1"].append(ev["rec1"])
+        history["val_prec0"].append(ev["prec0"])
+        history["val_rec0"].append(ev["rec0"])
+
+        global_epoch += 1
+
+        _log_epoch_metrics(
+            stage=stage,
+            ep=ep,
+            global_epoch=global_epoch,
+            tr_loss=tr_loss,
+            ev=ev,
+            opt=optimizer,
+        )
+
+        log(
+            f"[{run_name}][stage{stage}] tr={tr_loss:.4f} val={ev['val_loss']:.4f} "
+            f"val AUC={ev['auc']:.3f} val P1={ev['prec1']:.2f} val R1={ev['rec1']:.2f}",
+            log_fp,
+        )
+
+        if ev["val_loss"] < best_val:
+            best_val = ev["val_loss"]
+            best_stage = f"stage{stage}"
+            best_ckpt_path = output_dir / ckpt_filename
+            best_val_metrics = ev.copy()
+
+            torch.save(
+                {"model": model.state_dict(), "cfg": asdict(cfg)},
+                best_ckpt_path,
+            )
+
+            log_checkpoint_artifact(
+                ckpt_path=best_ckpt_path,
+                run_name=run_name,
+                stage=best_stage,
+                aliases=["best", f"best-{best_stage}"],
+            )
+
+    return {
+        "best_val": best_val,
+        "best_stage": best_stage,
+        "best_ckpt_path": best_ckpt_path,
+        "best_val_metrics": best_val_metrics,
+        "global_epoch": global_epoch,
+        "global_step": global_step,
+    }
+
+# main function
 def train_model(
-    cfg, samples, split_indices, output_dir: Path, 
-    device: torch.device | None = None, run_name: str = "default",
+    cfg, 
+    samples, 
+    split_indices, 
+    output_dir: Path, 
+    log_fp: Path,
+    device: torch.device | None = None, 
+    run_name: str = "default",
 ) -> Dict[str, Any]:
     """
     Entrena el clasificador usando train/validation.
@@ -103,7 +320,7 @@ def train_model(
     set_global_seed(cfg.random_seed)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    log_fp = output_dir / f"train_log_{run_name}.txt"
+    #log_fp = output_dir / f"train_log_{run_name}.txt"
 
     train_idx = split_indices["train_idx"]
     val_idx = split_indices["val_idx"]
@@ -111,8 +328,15 @@ def train_model(
     y_train = np.array([samples[i]["label"] for i in train_idx], dtype=np.int64)
 
     # ======================
-    # Loaders
+    # DataLoaders
     # ======================
+    log("[train] Building dataloaders", log_fp)
+    log(
+        f"[train] Loader setup | batch_size={cfg.batch_size} "
+        f"num_workers={cfg.num_workers} resize={cfg.resize_to}",
+        log_fp,
+    )
+
     train_loader, val_loader = make_loaders(
         samples=samples,
         tr_idx=train_idx,
@@ -126,6 +350,13 @@ def train_model(
     # ======================
     # Model
     # ======================
+    log("[model] Building model", log_fp)
+    log(
+        f"[model] head={head_kind} hidden={hidden} dropout={p_drop} "
+        f"input={input_mode} fusion={fusion}",
+        log_fp,
+    )
+
     model = build_model(
         head_kind=head_kind,
         hidden=hidden,
@@ -135,13 +366,24 @@ def train_model(
         device=device,
     )
 
+    global_epoch = 0
+    global_step = 0
+    watch_model_if_needed(cfg, model)
+
     pos_weight = compute_pos_weight(
         y_train=y_train,
         class1_bonus=cfg.class1_bonus,
         device=device
     )
 
-    criterion = (nn.BCEWithLogitsLoss(pos_weight=pos_weight) if pos_weight is not None
+    if pos_weight is not None:
+        log(f"[train] Using pos_weight={float(pos_weight.item()):.4f}", log_fp)
+    else:
+        log("[train] No class weighting applied", log_fp)
+
+    criterion = (
+        nn.BCEWithLogitsLoss(pos_weight=pos_weight) 
+        if pos_weight is not None
         else nn.BCEWithLogitsLoss()
     ) # durante el training la loss que retropropagamos es la media del batch, ponderada si hace falta.
 
@@ -164,145 +406,111 @@ def train_model(
     best_stage = None
     best_val_metrics: Dict[str, Any] = {}
  
+    do_batch_logging = batch_logging_enabled(cfg)
+    batch_log_freq = batch_log_every_steps(cfg)
+
     # ==========================================================
     # STAGE 1: backbone congelado + entrena solo la head
     # ==========================================================
+    log("[stage1] Starting stage 1: train classification head with frozen backbone", log_fp)
+
     freeze_for_stage(model, stage=1)
-    head_params, last_params, rest_params = param_groups(model, stage=1)
+    head_params, _, _ = param_groups(model, stage=1)
 
     opt = optim.AdamW([
         {"params": head_params, "lr": cfg.head_lr, "weight_decay": cfg.weight_decay}
     ])
 
-    for ep in range(1, cfg.stage1_epochs + 1):
-        model.train()
-        tr_loss, n_tr = 0.0, 0 # acumuladores de pérdida
+    state = run_training_stage(
+        stage=1,
+        n_epochs=cfg.stage1_epochs,
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        device=device,
+        criterion=criterion,
+        optimizer=opt,
+        cfg=cfg,
+        pos_weight=pos_weight,
+        output_dir=output_dir,
+        run_name=run_name,
+        history=history,
+        best_val=best_val,
+        best_stage=best_stage,
+        best_ckpt_path=best_ckpt_path,
+        best_val_metrics=best_val_metrics,
+        global_epoch=global_epoch,
+        global_step=global_step,
+        log_fp=log_fp,
+        do_batch_logging=do_batch_logging,
+        batch_log_freq=batch_log_freq,
+        ckpt_filename="best_stage1_head.pth",
+    )
 
-        pbar = tqdm(
-            train_loader,
-            desc=f"[{run_name}][stage1] Ep {ep}/{cfg.stage1_epochs}",
-            leave=False,
-        )
+    best_val = state["best_val"]
+    best_stage = state["best_stage"]
+    best_ckpt_path = state["best_ckpt_path"]
+    best_val_metrics = state["best_val_metrics"]
+    global_epoch = state["global_epoch"]
+    global_step = state["global_step"]
 
-        for imgs, lbl in pbar: ### lo marcado entre ### se repite igual para cada fase. Se podría posteriormente refactorizar a una función llamada run_one_epoch_train() para no ser redundantes.
-            imgs = imgs.to(device, non_blocking=True)
-            y = lbl.float().to(device, non_blocking=True)
-
-            opt.zero_grad(set_to_none=True)
-            logits = model(imgs) # salida cruda del modelo (sin limitar a [0,1]); representa una pre-probabilidad que BCEWithLogitsLoss transforma internamente con sigmoide
-            loss = criterion(logits, y)
-            loss.backward()
-            opt.step()
-
-            # Acumulas pérdida ponderada por número de meustras
-            bs = y.numel()
-            tr_loss += float(loss.item()) * bs
-            n_tr += bs
-
-            pbar.set_postfix({"loss": f"{(tr_loss / max(1, n_tr)):.4f}"})
-
-        # Cálculas pérdida media final de train
-        tr_loss = tr_loss / max(1, n_tr)
-        # Evalúas en validation
-        
-        # Nota: en evaluación usamos BCEWithLogitsLoss con reduction='sum'
-        # para calcular una loss media global por muestra en todo el validation set.
-        # Tendría sentido pasar tb pos_weight a evaluate para que el val_loss sea coherente con el training.
-        ev = evaluate(model=model, loader=val_loader, device=device, threshold=cfg.decision_threshold) 
-
-        history["train_loss"].append(tr_loss)
-        history["val_loss"].append(ev["val_loss"])
-        history["val_auc"].append(ev["auc"])
-        history["val_prec1"].append(ev["prec1"])
-        history["val_rec1"].append(ev["rec1"])
-        history["val_prec0"].append(ev["prec0"])
-        history["val_rec0"].append(ev["rec0"]) ###
-
-        log(
-            f"[{run_name}][stage1] tr={tr_loss:.4f} val={ev['val_loss']:.4f} "
-            f"val AUC={ev['auc']:.3f} val P1={ev['prec1']:.2f} val R1={ev['rec1']:.2f}",
-            log_fp,
-        )
-
-        if ev["val_loss"] < best_val:
-            best_val = ev["val_loss"]
-            best_stage = "stage1"
-            best_ckpt_path = output_dir / "best_stage1_head.pth"
-            best_val_metrics = ev.copy()
-
-            torch.save(
-                {"model": model.state_dict(), "cfg": asdict(cfg)},
-                best_ckpt_path,
-            )
+    log(f"[stage1] Stage 1 completed | best_val_so_far={best_val:.4f}", log_fp)
 
     # ==========================================================
     # STAGE 2: descongela últimos k bloques del backbone
     # ==========================================================
+    log(f"[stage2] Starting stage 2: unfreeze last {cfg.k_unf} backbone block(s)", log_fp)
+
     freeze_for_stage(model, stage=2, k_unf=cfg.k_unf)
-    head_params, last_params, rest_params = param_groups(model, stage=2, k_unf=cfg.k_unf)
+    head_params, last_params, _ = param_groups(model, stage=2, k_unf=cfg.k_unf)
 
     opt = optim.AdamW([ 
         {"params": head_params, "lr": cfg.head_lr, "weight_decay": cfg.weight_decay},
         {"params": last_params, "lr": cfg.last_lr, "weight_decay": cfg.weight_decay},
     ])
 
-    for ep in range(1, cfg.stage2_epochs + 1):
-        model.train()
-        tr_loss, n_tr = 0.0, 0
+    state = run_training_stage(
+        stage=2,
+        n_epochs=cfg.stage2_epochs,
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        device=device,
+        criterion=criterion,
+        optimizer=opt,
+        cfg=cfg,
+        pos_weight=pos_weight,
+        output_dir=output_dir,
+        run_name=run_name,
+        history=history,
+        best_val=best_val,
+        best_stage=best_stage,
+        best_ckpt_path=best_ckpt_path,
+        best_val_metrics=best_val_metrics,
+        global_epoch=global_epoch,
+        global_step=global_step,
+        log_fp=log_fp,
+        do_batch_logging=do_batch_logging,
+        batch_log_freq=batch_log_freq,
+        ckpt_filename="best_stage2_last.pth",
+    )
 
-        pbar = tqdm(
-            train_loader,
-            desc=f"[{run_name}][stage2] Ep {ep}/{cfg.stage2_epochs}",
-            leave=False,
-        )
+    best_val = state["best_val"]
+    best_stage = state["best_stage"]
+    best_ckpt_path = state["best_ckpt_path"]
+    best_val_metrics = state["best_val_metrics"]
+    global_epoch = state["global_epoch"]
+    global_step = state["global_step"]
 
-        for imgs, lbl in pbar:
-            imgs = imgs.to(device, non_blocking=True)
-            y = lbl.float().to(device, non_blocking=True)
-
-            opt.zero_grad(set_to_none=True)
-            logits = model(imgs)
-            loss = criterion(logits, y)
-            loss.backward()
-            opt.step()
-
-            bs = y.numel()
-            tr_loss += float(loss.item()) * bs
-            n_tr += bs
-            pbar.set_postfix({"loss": f"{(tr_loss / max(1, n_tr)):.4f}"})
-
-        tr_loss = tr_loss / max(1, n_tr)
-        ev = evaluate(model=model, loader=val_loader, device=device, threshold=cfg.decision_threshold)
-
-        history["train_loss"].append(tr_loss)
-        history["val_loss"].append(ev["val_loss"])
-        history["val_auc"].append(ev["auc"])
-        history["val_prec1"].append(ev["prec1"])
-        history["val_rec1"].append(ev["rec1"])
-        history["val_prec0"].append(ev["prec0"])
-        history["val_rec0"].append(ev["rec0"])
-
-        log(
-            f"[{run_name}][stage2] tr={tr_loss:.4f} val={ev['val_loss']:.4f} "
-            f"val AUC={ev['auc']:.3f} val P1={ev['prec1']:.2f} val R1={ev['rec1']:.2f}",
-            log_fp,
-        )
-
-        if ev["val_loss"] < best_val:
-            best_val = ev["val_loss"]
-            best_stage = "stage2"
-            best_ckpt_path = output_dir / "best_stage2_last.pth"
-            best_val_metrics = ev.copy()
-
-            torch.save(
-                {"model": model.state_dict(), "cfg": asdict(cfg)},
-                best_ckpt_path,
-            )
+    log(f"[stage2] Stage 2 completed | best_val_so_far={best_val:.4f}", log_fp)
 
     # ==========================================================
     # STAGE 3 (opcional): descongela todo el backbone
     # ==========================================================
+
     if cfg.stage3_epochs > 0:
+        log("[stage3] Starting stage 3: full backbone fine-tuning", log_fp)
+
         freeze_for_stage(model, stage=3)
         head_params, last_params, rest_params = param_groups(model, stage=3)
 
@@ -312,62 +520,46 @@ def train_model(
             {"params": rest_params, "lr": cfg.rest_lr, "weight_decay": cfg.weight_decay},
         ])
 
-        for ep in range(1, cfg.stage3_epochs + 1):
-            model.train()
-            tr_loss, n_tr = 0.0, 0
+        state = run_training_stage(
+            stage=3,
+            n_epochs=cfg.stage3_epochs,
+            model=model,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            device=device,
+            criterion=criterion,
+            optimizer=opt,
+            cfg=cfg,
+            pos_weight=pos_weight,
+            output_dir=output_dir,
+            run_name=run_name,
+            history=history,
+            best_val=best_val,
+            best_stage=best_stage,
+            best_ckpt_path=best_ckpt_path,
+            best_val_metrics=best_val_metrics,
+            global_epoch=global_epoch,
+            global_step=global_step,
+            log_fp=log_fp,
+            do_batch_logging=do_batch_logging,
+            batch_log_freq=batch_log_freq,
+            ckpt_filename="best_stage3_full.pth",
+        )
 
-            pbar = tqdm(
-                train_loader,
-                desc=f"[{run_name}][stage3] Ep {ep}/{cfg.stage3_epochs}",
-                leave=False,
-            )
+        best_val = state["best_val"]
+        best_stage = state["best_stage"]
+        best_ckpt_path = state["best_ckpt_path"]
+        best_val_metrics = state["best_val_metrics"]
+        global_epoch = state["global_epoch"]
+        global_step = state["global_step"]
 
-            for imgs, lbl in pbar:
-                imgs = imgs.to(device, non_blocking=True)
-                y = lbl.float().to(device, non_blocking=True)
+        log(f"[stage3] Stage 3 completed | best_val_so_far={best_val:.4f}", log_fp)
 
-                opt.zero_grad(set_to_none=True)
-                logits = model(imgs)
-                loss = criterion(logits, y)
-                loss.backward()
-                opt.step()
-
-                bs = y.numel()
-                tr_loss += float(loss.item()) * bs
-                n_tr += bs
-                pbar.set_postfix({"loss": f"{(tr_loss / max(1, n_tr)):.4f}"})
-
-            tr_loss = tr_loss / max(1, n_tr)
-            ev = evaluate(model=model, loader=val_loader, device=device, threshold=cfg.decision_threshold)
-
-            history["train_loss"].append(tr_loss)
-            history["val_loss"].append(ev["val_loss"])
-            history["val_auc"].append(ev["auc"])
-            history["val_prec1"].append(ev["prec1"])
-            history["val_rec1"].append(ev["rec1"])
-            history["val_prec0"].append(ev["prec0"])
-            history["val_rec0"].append(ev["rec0"])
-
-            log(
-                f"[{run_name}][stage3] tr={tr_loss:.4f} val={ev['val_loss']:.4f} "
-                f"val AUC={ev['auc']:.3f} val P1={ev['prec1']:.2f} val R1={ev['rec1']:.2f}",
-                log_fp,
-            )
-
-            if ev["val_loss"] < best_val:
-                best_val = ev["val_loss"]
-                best_stage = "stage3"
-                best_ckpt_path = output_dir / "best_stage3_full.pth"
-                best_val_metrics = ev.copy()
-
-                torch.save(
-                    {"model": model.state_dict(), "cfg": asdict(cfg)},
-                    best_ckpt_path,
-                )
-
-    # ======================
-    # Guardado del resultado interno de train
-    # ======================
+    log(
+        f"[train] Training finished | best_stage={best_stage} best_ckpt={best_ckpt_path}",
+        log_fp,
+    )
+    
     train_result = {
         "run_name": run_name,
         "output_dir": str(output_dir.resolve()),
@@ -385,5 +577,4 @@ def train_model(
     
     with (output_dir / "train_result.json").open("w", encoding="utf-8") as f:
         json.dump(train_result, f, indent=2)
-
     return train_result

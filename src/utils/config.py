@@ -3,7 +3,6 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-
 import yaml
 
 @dataclass
@@ -40,9 +39,41 @@ class TrainConfig:
     class1_bonus: float = 1.1
     decision_threshold: float = 0.5
 
+    # Modelo
     head_kind: str = "mlp"   # 'mlp' o 'logreg'
     hidden: int = 128
     dropout: float = 0.5
+
+    # Optional expert tracking
+    expert_mode: bool = False
+    expert_config_path: str = "configs/expert/wandb.yaml"
+
+    def __post_init__(self):
+        self.random_seed = int(self.random_seed)
+        self.batch_size = int(self.batch_size)
+        self.num_workers = int(self.num_workers)
+
+        self.val_size = float(self.val_size)
+        self.test_size = float(self.test_size)
+
+        self.resize_to = int(self.resize_to)
+
+        self.stage1_epochs = int(self.stage1_epochs)
+        self.stage2_epochs = int(self.stage2_epochs)
+        self.stage3_epochs = int(self.stage3_epochs)
+        self.k_unf = int(self.k_unf)
+
+        self.head_lr = float(self.head_lr)
+        self.last_lr = float(self.last_lr)
+        self.rest_lr = float(self.rest_lr)
+        self.weight_decay = float(self.weight_decay)
+
+        self.class1_bonus = float(self.class1_bonus)
+        self.decision_threshold = float(self.decision_threshold)
+
+        self.hidden = int(self.hidden)
+        self.dropout = float(self.dropout)
+        self.expert_mode = bool(self.expert_mode)
 
 @dataclass
 class InferenceConfig:

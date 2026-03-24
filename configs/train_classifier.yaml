@@ -2,31 +2,51 @@
 # configs/train_classifier.yaml
 
 random_seed: 42
-batch_size: 16
-num_workers: 1 
+
+# data splits
 val_size: 0.10 # proportion of data used for validation and test
 test_size: 0.10
-
 use_group_split: false # ensures ROIs from the same image stay in the same split (prevents leakage)
 group_key: image_path
 
+# input
 input_mode: stack # small ROI (local context), larger ROI (more context) or 'stack' that combines both
 fusion: dual # 'dual': two parallel streams (recommended) or 'stack6': 6-channel input (simpler, less standard)
 resize_to: 384
 
-stage1_epochs: 10 # training phases (frozen → partial → full)
-stage2_epochs: 10
-stage3_epochs: 10
-k_unf: 1 # number of backbone blocks unfrozen in stage 2
+# training
+batch_size: 16
+num_workers: 1 
+stage1_epochs: 5 # training phases (frozen → partial → full)
+stage2_epochs: 5
+stage3_epochs: 5
+k_unf: 2 # number of backbone blocks unfrozen in stage 2
  
-head_lr: 0.001 # learning rates for different parts of the model
+# optimization
+head_lr: 0.001
 last_lr: 0.0003
 rest_lr: 0.0001
 weight_decay: 0.0001
-
 class1_bonus: 1.1
 decision_threshold: 0.5
 
+# model
 head_kind: mlp # mlp or logreg
 hidden: 128 # size of hidden layer (MLP only)
 dropout: 0.5 # dropout probability (MLP only)
+
+# optional expert tracking
+expert_mode: true
+expert_config_path: "/scratch/jsanchoz/MARTA/configs/expert/wandb.yaml"
+
+  # Caso 1: expert_mode = false
+  # No se usa W&B.
+  # El entrenamiento funciona exactamente igual que ahora.
+
+  # Caso 2: expert_mode = true y hay W&B instalado
+  # tracking with W&B:
+    # - se inicializa una sesion de wandb,
+    # - registra config,
+    # - grafica métricas por fase,
+    # - muestra gradientes/pesos,
+    # - guarda checkpoints y artefactos finales.

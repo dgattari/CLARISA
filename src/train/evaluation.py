@@ -32,13 +32,20 @@ def _get_device():
 @torch.no_grad()
 def evaluate(
     model: nn.Module, loader: DataLoader, 
-    device: torch.device, threshold: float
+    device: torch.device, threshold: float,
+    pos_weight: Optional[torch.Tensor] = None,
 ) -> Dict[str, float]:
     
     model.eval()
     logits_all, labels_all = [], []
     loss_sum, n = 0.0, 0
-    crit = nn.BCEWithLogitsLoss(reduction='sum') # sumamos la pérdida total de todas las muestras. Luego divides por el total de las muestras y obtienes una media global exacta. 
+    
+    if pos_weight is not None:
+        crit = nn.BCEWithLogitsLoss(pos_weight=pos_weight) # emular el train loss
+    else:
+        crit = nn.BCEWithLogitsLoss(reduction="sum") # version old
+
+    # crit = nn.BCEWithLogitsLoss(reduction='sum') # sumamos la pérdida total de todas las muestras. Luego divides por el total de las muestras y obtienes una media global exacta. 
     # Así obtienes una media global exacta por muestra en todo el validation set, independientemente de cómo estén repartidos los batches.
 
     for imgs, lbl in loader:

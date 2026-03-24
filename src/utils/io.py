@@ -6,6 +6,8 @@ import pickle
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 # meter tb aqui un: quizá también read_yaml, write_json, etc. en el futuro
 
 # ---------- Carga de .spydata ----------
@@ -109,3 +111,96 @@ def safe_pickle_load(spy_path: Path) -> Any:
 
 def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
+
+# ---------- LECTOR ROBUSTO + CACHE POR WORKER ----------
+# Normalización a uint8 para imágenes 16-bit u otros formatos
+
+def _normalize_to_uint8(arr: np.ndarray) -> np.ndarray:
+    arr = arr.astype(np.float32)
+    mn, mx = float(arr.min()), float(arr.max())
+    if mx - mn < 1e-9:
+        return np.zeros_like(arr, dtype=np.uint8)
+    arr = (arr - mn) / (mx - mn) * 255.0
+    return arr.astype(np.uint8)
+
+
+def read_image_rgb(path: Path) -> np.ndarray:
+    """Lee imagen y devuelve **RGB uint8** (H,W,3). Intenta: cv2 COLOR → cv2 UNCHANGED → tifffile → PIL."""
+    # 1) OpenCV color
+    img = cv2.imread(str(path), cv2.IMREAD_COLOR)
+    if img is not None:
+        return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    # 2) OpenCV unchanged
+    img = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+    if img is not None:
+        if img.ndim == 2:
+            if img.dtype != np.uint8:
+                img = _normalize_to_uint8(img)
+            return np.dstack([img, img, img])
+        if img.ndim == 3 and img.shape[2] == 4:
+            img = img[..., :3]
+        if img.ndim == 3 and img.shape[2] == 3:
+            return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        if img.dtype != np.uint8:
+            img = _normalize_to_uint8(img)
+        if img.ndim == 2:
+            return np.dstack([img, img, img])
+        return img
+
+    # 3) tifffile
+    try:
+        import tifffile as tiff
+        arr = tiff.imread(str(path))
+        if arr.ndim == 2:
+            arr = _normalize_to_uint8(arr)
+            return np.dstack([arr, arr, arr])
+        if arr.ndim == 3 and arr.shape[2] >= 3:
+            if arr.dtype != np.uint8:
+                arr = _normalize_to_uint8(arr)
+            return arr[..., :3]
+        if arr.dtype != np.uint8:
+            arr = _normalize_to_uint8(arr)
+        return np.dstack([arr, arr, arr])
+    except Exception:
+        pass
+
+    # 4) PIL
+    try:
+        from PIL import Image
+        arr = np.array(Image.open(str(path)))
+        if arr.ndim == 2:
+            arr = _normalize_to_uint8(arr)
+            return np.dstack([arr, arr, arr])
+        if arr.ndim == 3 and arr.shape[2] >= 3:
+            if arr.dtype != np.uint8:
+                arr = _normalize_to_uint8(arr)
+            return arr[..., :3]
+        if arr.dtype != np.uint8:
+            arr = _normalize_to_uint8(arr)
+        return np.dstack([arr, arr, arr])
+    except Exception:
+        pass
+
+    raise RuntimeError(f"No pude leer imagen con ningún método: {path}")
+
+
+# Cache simple por proceso (cada worker tiene su propio dict) # ESTA FUNCIÓN PASARLA A utils/io.py
+_IMG_CACHE: dict[str, np.ndarray] = {}
+
+def get_image_cached(path: Path) -> np.ndarray:
+    """Devuelve la imagen RGB uint8 cacheada. Si no está, la carga y la guarda."""
+    key = str(path)
+    arr = _IMG_CACHE.get(key)
+    if arr is None:
+        arr = read_image_rgb(path)
+        _IMG_CACHE[key] = arr
+    return arr
+
+def load_state_dict_safe(path, device):
+    # En versiones nuevas de torch: usar weights_only=True.
+    try:
+        return torch.load(path, map_location=device, weights_only=True)
+    except TypeError:
+        # torch viejo sin ese flag → modo clásico
+        return torch.load(path, map_location=device)

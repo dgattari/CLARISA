@@ -17,8 +17,9 @@ from sklearn.metrics import (
 )
 
 from .datasets import make_eval_loader
-from .models import build_model
-from .legacy_train_base import load_state_dict_safe
+
+from src.models import build_model
+from src.utils.io import load_state_dict_safe
 
 def _get_device():
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")

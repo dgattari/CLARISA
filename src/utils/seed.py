@@ -1,7 +1,11 @@
 
 # src/utils/seed.py
+import random
+import numpy as np
+import torch
 
-from src.train import legacy_train_base as base # esto vamos a tener que refactorizar cuando toque el base
-
-def set_global_seed(seed: int): # vamos a tener que refactorizar el base de aqui
-    base.set_global_seed(seed)
+def set_global_seed(seed: int = 42):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)

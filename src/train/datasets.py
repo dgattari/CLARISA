@@ -9,10 +9,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import albumentations as A
 
-from .legacy_train_base import get_image_cached # el base me lo voy a cargar
-# el get_image_cached no se desde donde lo podemos importar pero no me gusta en base. Igual
-# estaría bien meterlo aquí.
-
+from src.utils.io import get_image_cached
 from src.preprocessing.crops import crop_center
 
 IMAGENET_MEAN = torch.tensor([0.485, 0.456, 0.406]).view(3,1,1)

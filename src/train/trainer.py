@@ -13,9 +13,9 @@ import torch.optim as optim
 from tqdm import tqdm
 
 from .datasets import make_loaders
-from .models import build_model, freeze_for_stage, param_groups
 from .evaluation import evaluate
 
+from src.models import build_model, freeze_for_stage, param_groups
 from src.utils.logging import log
 from src.utils.seed import set_global_seed
 from src.utils.wandb_utils import (

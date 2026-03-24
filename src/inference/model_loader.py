@@ -29,7 +29,8 @@ from typing import Dict, Any, Tuple
 
 import torch
 import torch.nn as nn
-from timm import create_model
+
+from src.models.backbones import build_backbone, adapt_first_conv_to_6ch
 
 def load_model_from_ckpt(
     ckpt_path: Path,
@@ -83,7 +84,7 @@ class InferenceModelSingle3Ch(nn.Module): # class ModelSingle3ch(nn.Module):
     """
     def __init__(self, head_state: Dict[str, torch.Tensor]):
         super().__init__()
-        self.backbone = build_backbone_3ch()
+        self.backbone = build_backbone()
         in_features = getattr(self.backbone, 'num_features', 1280)
         self.head = build_head_from_state(head_state, in_features)
     
@@ -102,8 +103,8 @@ class InferenceModelSingle3Ch(nn.Module): # class ModelSingle3ch(nn.Module):
 class InferenceModelStack6Single(nn.Module): # class ModelStack6Single(nn.Module):
     def __init__(self, head_state: Dict[str, torch.Tensor]):
         super().__init__()
-        self.backbone = build_backbone_3ch()
-        self.backbone = adapt_first_conv_to_in(self.backbone, 6)
+        self.backbone = build_backbone()
+        self.backbone = adapt_first_conv_to_6ch(self.backbone)
         in_features = getattr(self.backbone, 'num_features', 1280)
         self.head = build_head_from_state(head_state, in_features)
 
@@ -122,7 +123,7 @@ class InferenceModelStack6Single(nn.Module): # class ModelStack6Single(nn.Module
 class InferenceModelDualShared(nn.Module): # class ModelDualShared(nn.Module):
     def __init__(self, head_state: Dict[str, torch.Tensor]):
         super().__init__()
-        self.backbone = build_backbone_3ch()
+        self.backbone = build_backbone()
         in_features = getattr(self.backbone, 'num_features', 1280)
         #self.in_feats_total = in_features * 2
         self.head = build_head_from_state(head_state, in_features * 2)
@@ -145,81 +146,69 @@ class InferenceModelDualShared(nn.Module): # class ModelDualShared(nn.Module):
         f2 = self.backbone(x384)
         return torch.cat([f1, f2], dim=1)
 
-# ============================
-# Construcción del modelo según checkpoint
-# ============================
-# de aquí para abajo no estoy convencido que aguanten a una segunda refactorizacion
-
-def build_backbone_3ch():
-    """
-    Construye EfficientNetV2-S sin cabeza final, devolviendo features tras global pooling.
-    # num_classes=0 + global_pool='avg' → devuelve features (GAP)
-    """
-    return create_model('tf_efficientnetv2_s', pretrained=True, num_classes=0, global_pool='avg')
-# Nota
-# Podrías reutilizar el backbone del training, pero para no introducir dependencias raras con legacy_train_base, aquí tiene sentido mantenerlo local.
 
 
-def adapt_first_conv_to_in(backbone: nn.Module, in_channels: int) -> nn.Module:
-    """
-    Adapta conv_stem a in_channels (p.ej., 6) antes de cargar el state_dict.
+# def adapt_first_conv_to_in(backbone: nn.Module, in_channels: int) -> nn.Module:
+#     """
+#     Adapta conv_stem a in_channels (p.ej., 6) antes de cargar el state_dict.
    
-    Usado principalmente para el modo stack6 (6 canales).
-    """
-    conv = getattr(backbone, "conv_stem", None)
+#     Usado principalmente para el modo stack6 (6 canales).
+#     """
+#     conv = getattr(backbone, "conv_stem", None)
 
-    if conv is None or not isinstance(conv, nn.Conv2d):
-        for module in backbone.modules():
-            if isinstance(module, nn.Conv2d):
-                conv = module
-                break
+#     if conv is None or not isinstance(conv, nn.Conv2d):
+#         for module in backbone.modules():
+#             if isinstance(module, nn.Conv2d):
+#                 conv = module
+#                 break
 
-    if conv is None:
-        raise RuntimeError("No encontré Conv2d inicial para adaptar canales.")
+#     if conv is None:
+#         raise RuntimeError("No encontré Conv2d inicial para adaptar canales.")
 
-    if conv.in_channels == in_channels:
-        return backbone
+#     if conv.in_channels == in_channels:
+#         return backbone
 
-    new_conv = nn.Conv2d(
-        in_channels,
-        conv.out_channels,
-        conv.kernel_size,
-        conv.stride,
-        conv.padding,
-        bias=(conv.bias is not None),
-        dilation=conv.dilation,
-        groups=conv.groups,
-    )
+#     new_conv = nn.Conv2d(
+#         in_channels,
+#         conv.out_channels,
+#         conv.kernel_size,
+#         conv.stride,
+#         conv.padding,
+#         bias=(conv.bias is not None),
+#         dilation=conv.dilation,
+#         groups=conv.groups,
+#     )
 
-    with torch.no_grad():
-        if conv.weight.shape[1] == 3 and in_channels > 3:
-            new_conv.weight[:, :3] = conv.weight.data
-            mean_w = conv.weight.data.mean(dim=1, keepdim=True)
-            repeat = in_channels - 3
-            new_conv.weight[:, 3:3 + repeat] = mean_w.repeat(1, repeat, 1, 1)
-        else:
-            new_conv.weight[:] = 0.0
+#     with torch.no_grad():
+#         if conv.weight.shape[1] == 3 and in_channels > 3:
+#             new_conv.weight[:, :3] = conv.weight.data
+#             mean_w = conv.weight.data.mean(dim=1, keepdim=True)
+#             repeat = in_channels - 3
+#             new_conv.weight[:, 3:3 + repeat] = mean_w.repeat(1, repeat, 1, 1)
+#         else:
+#             new_conv.weight[:] = 0.0
 
-        if conv.bias is not None:
-            new_conv.bias[:] = conv.bias.data
+#         if conv.bias is not None:
+#             new_conv.bias[:] = conv.bias.data
 
-    parent = None
-    parent_name = None
+#     parent = None
+#     parent_name = None
 
-    for name, module in backbone.named_children():
-        if module is conv:
-            parent = backbone
-            parent_name = name
-            break
+#     for name, module in backbone.named_children():
+#         if module is conv:
+#             parent = backbone
+#             parent_name = name
+#             break
 
-    if parent is not None:
-        setattr(parent, parent_name, new_conv)
-    elif hasattr(backbone, "conv_stem"):
-        backbone.conv_stem = new_conv
-    else:
-        raise RuntimeError("No pude asignar el nuevo conv inicial.")
+#     if parent is not None:
+#         setattr(parent, parent_name, new_conv)
+#     elif hasattr(backbone, "conv_stem"):
+#         backbone.conv_stem = new_conv
+#     else:
+#         raise RuntimeError("No pude asignar el nuevo conv inicial.")
 
-    return backbone
+#     return backbone
+
 
 
 # ===== HeadMLP y build_head_from_state compatible con 'head.net.*' =====
@@ -231,7 +220,7 @@ class HeadMLP(nn.Module):
 
     def __init__(self, in_features: int, hidden: int, p_drop: float = 0.5, out_dim: int = 1):
         super().__init__()
-        self.net = nn.Sequential(
+        self.net = nn.Sequential( # aqui si se hace un tuning de la red no lo aguanta, habria que cambiar en los dos. 
             nn.Linear(in_features, hidden),
             nn.SiLU(inplace=True),
             nn.Dropout(p_drop),
@@ -275,29 +264,3 @@ def build_head_from_state(
             return nn.Linear(in_features, out_dim)
 
     return nn.Linear(in_features, 1)
-
-# Tu esquema funcional encaja perfecto:
-
-# - leer imágenes
-# - ordenar secciones
-# - convertir si hace falta
-# - detectar ROIs
-# - cargar modelo
-# - preparar crops
-# - inferir ROI a ROI
-# - guardar tablas
-# - generar overlays
-# - t-SNE
-# - heatmap
-# - métricas
-
-# outputs finales
-# src/inference/
-# ├── model_loader.py
-# ├── roi_inference.py
-# ├── analysis.py
-# ├── single_image.py
-# └── batch_grid.py
-
-# src/utils/config.py
-# src/utils/io.py

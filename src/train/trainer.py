@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
+import optuna
 
 from .datasets import make_loaders
 from .evaluation import evaluate
@@ -175,6 +176,7 @@ def run_training_stage(
     do_batch_logging: bool,
     batch_log_freq: int,
     ckpt_filename: str,
+    trial=None,
 ):
     """
     Ejecuta un stage completo de entrenamiento:
@@ -229,6 +231,17 @@ def run_training_stage(
 
         global_epoch += 1
 
+        # For Optuna optimization if trial should be pruned training will be haulted.
+        if trial is not None:
+            trial.report(ev["val_loss"], step=global_epoch)
+            if trial.should_prune():
+                log(
+                    f"[optuna] Trial pruned at global_epoch={global_epoch} "
+                    f"during stage={stage} | val_loss={ev['val_loss']:.4f}",
+                    log_fp,
+                )
+                raise optuna.TrialPruned()
+
         _log_epoch_metrics(
             stage=stage,
             ep=ep,
@@ -280,6 +293,7 @@ def train_model(
     log_fp: Path,
     device: torch.device | None = None, 
     run_name: str = "default",
+    trial=None,
 ) -> Dict[str, Any]:
     """
     Entrena el clasificador usando train/validation.
@@ -311,7 +325,6 @@ def train_model(
     input_mode = cfg.input_mode
     fusion = cfg.fusion
 
-    run_name = f"{head_kind}{'' if hidden is None else '_'+str(hidden)}{'' if p_drop is None else f'_d{p_drop}'}"
     print(
         f"\n===== RUN: {run_name} | head={head_kind} | hidden={hidden} "
         f"| dropout={p_drop} | input={input_mode} | fusion={fusion} ====="
@@ -320,7 +333,6 @@ def train_model(
     set_global_seed(cfg.random_seed)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    #log_fp = output_dir / f"train_log_{run_name}.txt"
 
     train_idx = split_indices["train_idx"]
     val_idx = split_indices["val_idx"]
@@ -445,6 +457,7 @@ def train_model(
         do_batch_logging=do_batch_logging,
         batch_log_freq=batch_log_freq,
         ckpt_filename="best_stage1_head.pth",
+        trial=trial,
     )
 
     best_val = state["best_val"]
@@ -493,6 +506,7 @@ def train_model(
         do_batch_logging=do_batch_logging,
         batch_log_freq=batch_log_freq,
         ckpt_filename="best_stage2_last.pth",
+        trial=trial,
     )
 
     best_val = state["best_val"]
@@ -544,6 +558,7 @@ def train_model(
             do_batch_logging=do_batch_logging,
             batch_log_freq=batch_log_freq,
             ckpt_filename="best_stage3_full.pth",
+            trial=trial,
         )
 
         best_val = state["best_val"]

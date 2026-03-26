@@ -11,7 +11,6 @@ Computational pipeline to detect and spatially quantify the lateral redistributi
 ---
 
 ## Table of contents
-
 - [Installation](#installation)
 - [Data structure](#data-structure)
 - [Training](#training)
@@ -20,6 +19,7 @@ Computational pipeline to detect and spatially quantify the lateral redistributi
   - [Example configuration](#example-configuration)
   - [Training outputs](#training-outputs)
   - [Training configuration](#training-configuration)
+  - [Hyperparameter tuning](#hyperparameter-tuning)
 - [Inference](#inference)
   - [Single-image inference](#single-image-inference)
   - [Batch inference and grid generation](#batch-inference-and-grid-generation)
@@ -153,8 +153,13 @@ Main parameters:
 Advanced experiment tracking is available through an optional expert mode for users who want W&B monitoring, artifact logging and easier comparison across runs.
 
 See:
-
 `docs/EXPERT_TRACKING.md`
+
+### Hyperparameter tuning
+A dedicated hyperparameter tuning workflow is available for controlled architecture screening and fine-tuning optimization of the MARTA classifier.
+
+For methodology, configuration, outputs, and execution examples, see:
+`docs/HYPERPARAMETER_TUNING.md`
 
 ---
 

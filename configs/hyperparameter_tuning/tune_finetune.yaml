@@ -1,0 +1,76 @@
+
+# configs/hyper_tuning/tune_finetune.yaml
+ 
+# dado el diseño base elegido, cuál es el mejor régimen de fine-tuning?
+
+# Y ESTAS ? 
+# class weight
+# augmentation strength
+# Prioridad baja por ahora
+# profundidad de la head
+# activación de la head
+
+# DECIDIR ESTO CON DANI!!! Y TB QUE EL SPLITTING TIENE QUE SER PENSADO Y COHERENTE
+study_name: "marta_finetune_search"
+search_mode: "finetune"
+direction: "minimize"
+
+storage_path: "experiments/marta_optuna/finetune/optuna.db"
+output_root: "experiments/marta_optuna/finetune"
+base_train_config: "configs/train_classifier.yaml"
+
+n_trials: 30
+timeout_minutes: null
+random_seed: 42
+
+pruning:
+  enabled: true
+  n_startup_trials: 5
+  n_warmup_steps: 3
+  interval_steps: 1
+
+# wandb:
+#   enabled: true
+#   force_group_name: "marta_finetune_search"
+#   trial_name_prefix: "trial"
+
+fixed:
+  random_seed: 42
+  val_size: 0.10
+  test_size: 0.10
+  use_group_split: false
+  group_key: "image_path"
+
+  input_mode: "stack"
+  fusion: "dual"
+  head_kind: "mlp"
+  hidden: 128
+  resize_to: 384
+
+  batch_size: 16
+  num_workers: 1
+  k_unf: 1
+
+  weight_decay: 0.0001
+  class1_bonus: 1.1
+  decision_threshold: 0.5
+
+search_space:
+  dropout_choices: [0.2, 0.3, 0.4, 0.5, 0.6]
+
+  head_lr:
+    low: 1.0e-4
+    high: 3.0e-3
+    log: true
+
+  last_ratio:
+    low: 0.2
+    high: 1.0
+
+  rest_ratio:
+    low: 0.1
+    high: 1.0
+
+  stage1_epochs_choices: [1, 2, 3, 4, 5, 6]
+  stage2_epochs_choices: [1, 2, 3, 4, 5, 6]
+  stage3_epochs_choices: [3, 5, 8, 10, 12, 15]

@@ -29,8 +29,14 @@ def load_expert_config(config_path: str | Path | None) -> dict:
 
 def get_wandb_cfg_from_main_cfg(cfg) -> dict:
     """
-    Devuelve la subconfig de wandb si expert_mode está activo y existe
-    expert_config_path. Si no, devuelve {}.
+    Return the W&B sub-configuration from the main MARTA config.
+
+    W&B is controlled through:
+      - expert_mode
+      - expert_config_path
+
+    If expert mode is disabled or the expert config cannot be loaded, an empty
+    dictionary is returned.
     """
     expert_mode = bool(getattr(cfg, "expert_mode", False))
     if not expert_mode:
@@ -42,11 +48,13 @@ def get_wandb_cfg_from_main_cfg(cfg) -> dict:
 
 def wandb_is_enabled(cfg) -> bool:
     """
-    W&B solo se activa si:
-      - expert_mode=True
-      - hay configuración wandb con enabled=True
-      - wandb está instalado
-      - mode != disabled
+    Return True only when W&B tracking is effectively enabled.
+
+    W&B is enabled if:
+      - expert_mode is active
+      - a valid wandb section exists in the expert config
+      - wandb is installed
+      - mode is not set to 'disabled'
     """
     wandb_cfg = get_wandb_cfg_from_main_cfg(cfg)
 
@@ -62,8 +70,19 @@ def init_wandb_run(
     run_name: str, 
     output_dir: Path, 
     extra_config: Optional[Dict[str, Any]] = None,
+    project_override: Optional[str] = None,
+    group_override: Optional[str] = None,
+    job_type_override: Optional[str] = None,
+    name_override: Optional[str] = None,
 ):
+    """
+    Initialize a W&B run for the current MARTA execution.
 
+    The default behavior uses the W&B settings defined in the expert config.
+    Optional overrides can be supplied for project, group, job type, and run
+    name. This is useful for Optuna studies, where trial runs should be grouped
+    separately from standard final training runs.
+    """
     if not wandb_is_enabled(cfg):
         return None
 
@@ -77,11 +96,11 @@ def init_wandb_run(
 
     try:
         run = wandb.init(
-            project=wandb_cfg.get("project", "MARTA-training"),
+            project=project_override or wandb_cfg.get("project", "MARTA-training"),
             entity=wandb_cfg.get("entity", None),
-            name=wandb_cfg.get("name", None) or run_name,
-            group=wandb_cfg.get("group", None),
-            job_type=wandb_cfg.get("job_type", "train"),
+            name=name_override or wandb_cfg.get("name", None) or run_name,
+            group=group_override or wandb_cfg.get("group", None),
+            job_type=job_type_override or wandb_cfg.get("job_type", "train"),
             tags=list(wandb_cfg.get("tags", [])) if wandb_cfg.get("tags", None) is not None else None,
             notes=wandb_cfg.get("notes", None),
             mode=wandb_cfg.get("mode", "online"),
@@ -171,6 +190,11 @@ def batch_log_every_steps(cfg) -> int:
         return 20
 
 def finish_wandb(summary: Optional[Dict[str, Any]] = None):
+    """
+    Safely finish the active W&B run.
+
+    This function is safe to call even when no run is active.
+    """
     if wandb is None or wandb.run is None:
         return
 

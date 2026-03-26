@@ -93,6 +93,7 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
     # ======================
     ts = time.strftime("%Y%m%d_%H%M%S")
     run_name = build_train_run_name(cfg)
+
     base_dir = EXPERIMENTS_DIR / f"{run_name}_{ts}"
     base_dir.mkdir(parents=True, exist_ok=True)
 

@@ -11,6 +11,7 @@ scikit-learn
 openpyxl
 plotly>=5.18
 wandb
+optuna
 
 
 

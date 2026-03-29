@@ -23,18 +23,8 @@ pruning:
 
 # quizá incluso no usar Optuna “inteligente” al principio, sino un barrido pequeño pero completo y controlado
 
-# wandb:
-#   enabled: true
-#   force_group_name: "marta_architecture_search"
-#   trial_name_prefix: "trial"
-
-fixed:
+fixed: # aqui seria usar unos parametros coherentes con los que poder comparar diferentes architecturas.
   random_seed: 42
-  val_size: 0.10
-  test_size: 0.10
-  use_group_split: false
-  group_key: "image_path"
-
   resize_to: 384
   batch_size: 16
   num_workers: 1
@@ -53,7 +43,7 @@ fixed:
 
 search_space:
   input_mode_choices: ["256", "384", "stack"]
-  fusion_for_stack_choices: ["dual", "stack6"]
+  fusion_for_stack_choices: ["dual", "stack6"] 
   head_kind_choices: ["mlp", "logreg"]
   hidden_choices: [64, 128, 256]
   dropout_choices: [0.3, 0.5]

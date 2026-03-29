@@ -54,7 +54,7 @@ echo "Expert mode setting:"
 grep -E "^expert_mode:" configs/train_classifier.yaml || true
 
 python3.10 -m src.train.train_classifier \
-    --config configs/train_classifier.yaml
+    --config /scratch/jsanchoz/MARTA/configs/train_classifier.yaml
 
 echo "========================================"
 echo "MARTA training finished"

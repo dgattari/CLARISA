@@ -29,11 +29,6 @@ pruning:
   n_warmup_steps: 3
   interval_steps: 1
 
-# wandb:
-#   enabled: true
-#   force_group_name: "marta_finetune_search"
-#   trial_name_prefix: "trial"
-
 fixed:
   random_seed: 42
   val_size: 0.10
@@ -47,11 +42,7 @@ fixed:
   hidden: 128
   resize_to: 384
 
-  batch_size: 16
   num_workers: 1
-  k_unf: 1
-
-  weight_decay: 0.0001
   class1_bonus: 1.1
   decision_threshold: 0.5
 
@@ -74,3 +65,5 @@ search_space:
   stage1_epochs_choices: [1, 2, 3, 4, 5, 6]
   stage2_epochs_choices: [1, 2, 3, 4, 5, 6]
   stage3_epochs_choices: [3, 5, 8, 10, 12, 15]
+
+# batch size, weight_decay, class1_bonus?, k_unf (1,2,3)

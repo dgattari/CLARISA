@@ -6,6 +6,31 @@ from pathlib import Path
 import yaml
 
 @dataclass
+class DataSplitConfig:
+    split_name: str = "marta_split_v1"
+    output_dir: str = "experiments/data_splits/marta_split_v1"
+
+    random_seed: int = 42
+    strategy: str = "manual_groups"   # roi_stratified | grouped | manual_groups
+
+    group_definition: str = "slide"
+    group_key: str = "slide_id"
+    notes: str = ""
+
+    test_size: float = 0.15
+    val_size_within_trainval: float = 0.15
+
+    manual_split: dict | None = None
+
+    def __post_init__(self):
+        self.random_seed = int(self.random_seed)
+        self.test_size = float(self.test_size)
+        self.val_size_within_trainval = float(self.val_size_within_trainval)
+        
+        if self.manual_split is None:
+            self.manual_split = {}
+
+@dataclass
 class TrainConfig:  
     random_seed: int = 42
     batch_size: int = 16
@@ -48,6 +73,9 @@ class TrainConfig:
     expert_mode: bool = False
     expert_config_path: str = "configs/expert/wandb.yaml"
 
+    use_precomputed_split: bool = False
+    split_dir: str | None = None
+
     def __post_init__(self):
         self.random_seed = int(self.random_seed)
         self.batch_size = int(self.batch_size)
@@ -74,6 +102,7 @@ class TrainConfig:
         self.hidden = int(self.hidden)
         self.dropout = float(self.dropout)
         self.expert_mode = bool(self.expert_mode)
+        self.use_precomputed_split = bool(self.use_precomputed_split)
 
 @dataclass
 class InferenceConfig:
@@ -88,6 +117,15 @@ class InferenceConfig:
 
     random_seed: int = 42
     save_excel: bool = True
+
+def load_data_split_config(config_path: str | Path) -> DataSplitConfig:
+    with open(config_path, "r", encoding="utf-8") as f:
+        cfg_dict = yaml.safe_load(f) or {}
+
+    if not isinstance(cfg_dict, dict):
+        raise ValueError("Data split config must be a YAML dictionary.")
+
+    return DataSplitConfig(**cfg_dict)
 
 def load_train_config(config_path: str | Path) -> TrainConfig:
     """

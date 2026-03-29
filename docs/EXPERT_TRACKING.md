@@ -21,7 +21,6 @@ pip install wandb
 ```
 
 2. **Authenticate**
-
 Quick option:
 ```bash
 wandb login

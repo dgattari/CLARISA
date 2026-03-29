@@ -3,11 +3,9 @@
 
 random_seed: 42
 
-# data splits
-val_size: 0.10 # proportion of data used for validation and test
-test_size: 0.10
-use_group_split: false # ensures ROIs from the same image stay in the same split (prevents leakage)
-group_key: image_path
+# data
+use_precomputed_split: true
+split_dir: "/scratch/jsanchoz/MARTA/experiments/data_splits/marta_split_v1"
 
 # input
 input_mode: stack # small ROI (local context), larger ROI (more context) or 'stack' that combines both
@@ -19,7 +17,7 @@ batch_size: 16
 num_workers: 1 
 stage1_epochs: 5 # training phases (frozen → partial → full)
 stage2_epochs: 5
-stage3_epochs: 5
+stage3_epochs: 10
 k_unf: 2 # number of backbone blocks unfrozen in stage 2
  
 # optimization
@@ -36,7 +34,7 @@ hidden: 128 # size of hidden layer (MLP only)
 dropout: 0.5 # dropout probability (MLP only)
 
 # optional expert tracking
-expert_mode: true
+expert_mode: false
 expert_config_path: "/scratch/jsanchoz/MARTA/configs/expert/wandb.yaml"
 
   # Caso 1: expert_mode = false

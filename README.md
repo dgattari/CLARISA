@@ -14,11 +14,14 @@ Computational pipeline to detect and spatially quantify the lateral redistributi
 - [Installation](#installation)
 - [Data structure](#data-structure)
 - [Training](#training)
+  - [Data split policy](#data-split-policy)
+    - [Data split generation on cluster (SLURM)](#data-split-generation-on-cluster-slurm)
   - [Quick start](#quick-start)
-  - [Running on cluster (SLURM)](#running-on-cluster-slurm)
+  - [Training on cluster (SLURM)](#training-on-cluster-slurm)
   - [Example configuration](#example-configuration)
   - [Training outputs](#training-outputs)
   - [Training configuration](#training-configuration)
+  - [Optional expert tracking](#optional-expert-tracking)
   - [Hyperparameter tuning](#hyperparameter-tuning)
 - [Inference](#inference)
   - [Single-image inference](#single-image-inference)
@@ -27,6 +30,7 @@ Computational pipeline to detect and spatially quantify the lateral redistributi
   - [Inference outputs](#inference-outputs)
   - [Inference configuration](#inference-configuration)
 - [Pipeline overview](#pipeline-overview)
+- [Contact and support](#contact-and-support)
 
 ## Installation
 ```bash
@@ -53,17 +57,44 @@ Each `.spydata` file must contain:
 * `target_regions_1_filtered` → class 0
 * `target_regions_2_filtered` → class 1
 
+
+<!-- # aqui faltaria meter algo como data availability -->
+
 ---
 
 ## Training
 The training module is intended to learn a classifier that distinguishes ROI patterns associated with longitudinal versus lateralized CX43 distributions in annotated cardiac tissue images.
 
-Starting from `.spydata` annotations and their corresponding images, the pipeline builds ROI-level samples, performs train/validation/test splitting, and trains the classifier in three stages.
+Starting from `.spydata` annotations and their corresponding images, the pipeline builds ROI-level samples, uses a **precomputed train/validation/test split**, and trains the classifier in three stages.
 
-<!-- version old
+
+### Data split policy
+MARTA uses a precomputed data split that is created once and then reused consistently in:
+
+- standard classifier training
+- hyperparameter tuning
+- final model evaluation
+
+This avoids redefining the split at runtime and makes the full training workflow more reproducible and easier to audit.
+
+The split is generated with:
+
 ```bash
-python MARTA/MARTA_MULTIINPUT_SINGLE_TRAIN.py
-``` -->
+python -m src.train.create_data_split --config configs/data_split.yaml
+```
+
+The resulting split artifacts are stored on disk and include:
+- split metadata
+- exact train / validation / test indices
+- one-row-per-sample split assignments
+- class summaries by slide and by final split
+
+Standard training and hyperparameter tuning can then load the same split definition directly from disk.
+
+#### Data split generation on cluster (SLURM)
+```bash
+sbatch scripts/create_data_split.sh
+```
 
 <!-- Hay que discutir si mas adelante lo queremos vender como un metodo ya para usar en inferencia y la parte del training va a otro README o queremos que el usuario entrene con sus propios datos y luego haga al inferencia.  -->
 
@@ -80,7 +111,7 @@ This will:
 * evaluate the selected checkpoint on the test set
 * export metrics, logs and ROC curve
 
-### Running on cluster (SLURM)
+### Training on cluster (SLURM)
 ```bash
 sbatch scripts/train_classifier.sh
 ```
@@ -121,9 +152,10 @@ configs/train_classifier.yaml
 Main parameters: 
 
 **Data & splits**
-* `val_size`, `test_size`: proportion of data used for validation and test
-* `use_group_split`: ensures that ROIs from the same image remain in the same split
-* `group_key`: sample field used for grouping when `use_group_split=true`
+* `use_precomputed_split`: whether to load a precomputed split from disk
+* `split_dir`: directory containing the saved split artifacts
+* `val_size`, `test_size`: only used when a split is generated on the fly for backward compatibility
+* `use_group_split`, `group_key`: legacy split options kept for compatibility with alternative split strategies
 
 **Input**
 * `input_mode`: 
@@ -158,10 +190,13 @@ See:
 ### Hyperparameter tuning
 A dedicated hyperparameter tuning workflow is available for controlled architecture screening and fine-tuning optimization of the MARTA classifier.
 
+Hyperparameter tuning reuses the same precomputed split used by standard training, so all trials are evaluated on exactly the same train / validation partitions.
+
 For methodology, configuration, outputs, and execution examples, see:
 `docs/HYPERPARAMETER_TUNING.md`
 
 ---
+
 
 ## Inference
 The inference module is intended to apply a trained MARTA checkpoint to new cardiac tissue images in order to detect ROIs, classify them, and summarize the spatial distribution of CX43 across the image or across multiple sections.
@@ -176,20 +211,6 @@ python -m src.inference.single_image \
     --outdir infer_test \
     --config configs/inference.yaml
 ```
-
-<!-- example
-python -m src.inference.single_image \
-    --image /scratch/jsanchoz/MARTA/data/images/IM1313.png \
-    --ckpt /scratch/jsanchoz/MARTA/experiments/MARTA_MULTIINPUT_SINGLE_10_epochs/mlp_128_d0.5_stack_dual_20260319_205828/best_stage3_full.pth \
-    --outdir /scratch/jsanchoz/MARTA/experiments/MARTA_MULTIINPUT_SINGLE_10_epochs/infer_test \
-    --config /scratch/jsanchoz/MARTA/configs/inference.yaml
--->
-
-<!-- version old
-python MARTA_INFER_TSNE_MULTIINPUT_AREALAT_v2.py \
- --image /scratch/jsanchoz/MARTA/images/IM133.png \
- --ckpt "/scratch/jsanchoz/MARTA/experiments/MARTA_MULTIINPUT_SINGLE/multi_stack_dual_20260307_202622/mlp_128_d0.5/best_stage3_full.pth" \
- --outdir "/scratch/jsanchoz/MARTA/experiments/MARTA_MULTIINPUT_SINGLE/multi_stack_dual_20260307_202622/mlp_128_d0.5/inference" -->
 
 This will:
 - read the input image
@@ -211,12 +232,6 @@ python -m src.inference.batch_grid \
     --outdir infer_batch \
     --config configs/inference.yaml
 ```
-
-<!-- version old
-python MARTA_INFER_BATCH_GRID.py \
- --folder_images /scratch/jsanchoz/MARTA/images \
- --ckpt "/scratch/jsanchoz/MARTA/experiments/MARTA_MULTIINPUT_SINGLE/multi_stack_dual_20260307_202622/mlp_128_d0.5/best_stage3_full.pth" \
- --outdir "/scratch/jsanchoz/MARTA/experiments/MARTA_MULTIINPUT_SINGLE/multi_stack_dual_20260307_202622/mlp_128_d0.5/inference_batch_grid" -->
 
 This will:
 - discover and sort section images
@@ -284,7 +299,7 @@ Main parameters:
         ↓
 ROI extraction
         ↓
-train / val / test split
+precomputed train / val / test split
         ↓
 3-stage training
         ↓

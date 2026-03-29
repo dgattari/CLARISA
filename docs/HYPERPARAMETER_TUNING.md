@@ -23,12 +23,16 @@ python -m src.train.tune_classifier --config <tuning_config.yaml>
 
 ---
 
-## Fixed split policy <!-- aqui hay que ver como dividimos el data al final -->
-For a given Optuna study, the dataset is built once and the train/validation split is also generated once.
+## Fixed split policy
+For a given MARTA tuning study, the data split is not generated inside the tuning workflow.
 
-All trials within the same study are evaluated on the same split.
+Instead, hyperparameter tuning reuses a precomputed split that has been created and stored beforehand. This ensures that:
 
-This is important because it ensures that differences between trials are driven by hyperparameters rather than by changes in the data split.
+- all trials are evaluated on exactly the same train / validation partition
+- model comparison is not affected by split variability
+- tuning remains fully consistent with the standard training workflow
+
+The split definition and its inspection artifacts are generated through the MARTA data split creation step described in the main project README.
 
 ---
 
@@ -203,7 +207,6 @@ configs/hyperparameter_tuning/tune_architecture.yaml
 ```
 
 ### Fine-tuning search config
-
 Example:
 ```
 configs/hyperparameter_tuning/tune_finetune.yaml
@@ -220,6 +223,8 @@ Each tuning config specifies:
 - Optuna search space
 
 ---
+
+Each tuning config also points to a precomputed split directory, so all trials within the study reuse the same stored partition.
 
 ## Running locally
 

@@ -51,10 +51,14 @@ import pandas as pd
 import torch
 
 from .dataset_builder import build_samples
-from .splits import make_splits
 from .trainer import train_model
 from .evaluation import evaluate_saved_checkpoint
 
+from src.data import (
+    load_split_indices, 
+    validate_precomputed_split, 
+    make_split_indices,
+)
 from src.utils.config import load_train_config, build_train_run_name
 from src.utils.seed import set_global_seed
 from src.utils.plots import save_roc_curve
@@ -63,7 +67,6 @@ from src.utils.wandb_utils import (
     log_metrics,
     log_artifact_file,
     finish_wandb
-
 )
 from src.utils.logging import log
 
@@ -114,25 +117,49 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
     # ======================
     # Splits
     # ======================
-    log("[split] Creating train/val/test split", log_fp)
-    train_idx, val_idx, test_idx = make_splits(
-        samples=samples,
-        y=y,
-        test_size=cfg.test_size,
-        val_size=cfg.val_size,
-        random_seed=cfg.random_seed,
-        use_group_split=cfg.use_group_split,
-        group_key=cfg.group_key,
-    )
+    if getattr(cfg, "use_precomputed_split", False):
+        if not getattr(cfg, "split_dir", None):
+            raise ValueError(
+                "use_precomputed_split=True but split_dir is not set in the training config."
+            )
 
-    split_indices = {
-        "train_idx": train_idx,
-        "val_idx": val_idx,
-        "test_idx": test_idx,
-    }
+        log("[split] Loading precomputed split", log_fp)
+        log(f"[split] Split dir: {cfg.split_dir}", log_fp)
+
+        validate_precomputed_split(samples=samples, split_dir=cfg.split_dir)
+        split_indices = load_split_indices(cfg.split_dir)
+
+    else:
+        log("[split] Creating train/val/test split from config", log_fp)
+
+        strategy = "grouped" if cfg.use_group_split else "roi_stratified"
+
+        val_size_within_trainval = float(cfg.val_size) / (1.0 - float(cfg.test_size))
+
+        split_indices = make_split_indices(
+            samples=samples,
+            strategy=strategy,
+            random_seed=cfg.random_seed,
+            test_size=cfg.test_size,
+            val_size_within_trainval=val_size_within_trainval,
+            group_key=cfg.group_key,
+            manual_split=None,
+        )
+
+    train_idx = split_indices["train_idx"]
+    val_idx = split_indices["val_idx"]
+    test_idx = split_indices["test_idx"]
 
     log(
         f"[split] Sizes | train={len(train_idx)} val={len(val_idx)} test={len(test_idx)}",
+        log_fp,
+    )
+    log(
+        f"[split] Split source: {'precomputed' if getattr(cfg, 'use_precomputed_split', False) else 'runtime'}",
+        log_fp,
+    )
+    log(
+        f"[split] Strategy: {'precomputed' if getattr(cfg, 'use_precomputed_split', False) else strategy}",
         log_fp,
     )
     log(

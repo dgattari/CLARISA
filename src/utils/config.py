@@ -32,12 +32,12 @@ class DataSplitConfig:
 
 @dataclass
 class TrainConfig:  
+    split_tag: str = "default_split"
+    experiment_tag: str = "default"
+
     random_seed: int = 42
     batch_size: int = 16
     num_workers: int = 4
-
-    val_size: float = 0.10
-    test_size: float = 0.10
 
     # Group split (anti-leakage)
     use_group_split: bool = False
@@ -81,9 +81,6 @@ class TrainConfig:
         self.batch_size = int(self.batch_size)
         self.num_workers = int(self.num_workers)
 
-        self.val_size = float(self.val_size)
-        self.test_size = float(self.test_size)
-
         self.resize_to = int(self.resize_to)
 
         self.stage1_epochs = int(self.stage1_epochs)
@@ -99,8 +96,10 @@ class TrainConfig:
         self.class1_bonus = float(self.class1_bonus)
         self.decision_threshold = float(self.decision_threshold)
 
-        self.hidden = int(self.hidden)
+        if self.hidden is not None:
+            self.hidden = int(self.hidden)
         self.dropout = float(self.dropout)
+
         self.expert_mode = bool(self.expert_mode)
         self.use_precomputed_split = bool(self.use_precomputed_split)
 
@@ -148,4 +147,5 @@ def build_train_run_name(cfg: TrainConfig) -> str:
     """
     if cfg.head_kind == "logreg":
         return f"logreg_{cfg.input_mode}_{cfg.fusion}"
-    return f"mlp_{cfg.hidden}_d{cfg.dropout}_{cfg.input_mode}_{cfg.fusion}"
+
+    return f"mlp_h{cfg.hidden}_d{cfg.dropout}_{cfg.input_mode}_{cfg.fusion}"

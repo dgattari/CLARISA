@@ -1,0 +1,88 @@
+
+# configs/hyper_tuning/tune_finetune.yaml
+ 
+# Fase 2 — tune_finetune
+
+# Objetivo: una vez fijada la arquitectura base, tocar solo lo importante.
+
+# Arquitectura fija
+
+# Yo partiría de algo como:
+
+# input_mode = stack
+# fusion = dual
+# head_kind = mlp
+# hidden = 128
+# dropout = 0.5
+
+# si sigue siendo el candidato razonable.
+
+# Espacio pequeño de fine-tuning
+# dropout: [0.3, 0.4, 0.5]
+# head_lr: loguniform en [1e-4, 5e-4]
+# last_ratio: [0.2, 0.35, 0.5]
+# rest_ratio: [0.1, 0.2, 0.35]
+# stage1_epochs: [3, 5]
+# stage2_epochs: [3, 5]
+# stage3_epochs: [6, 8, 10]
+
+# Fijos
+# class1_bonus fijo
+# k_unf fijo
+# no pruning agresivo
+# n_trials recomendado
+# slide split: 14-20
+# roi split: 14-20
+
+study_name: marta_finetune_slide_v1
+search_mode: finetune
+
+split_dir: /scratch/jsanchoz/MARTA/experiments/data_splits/marta_slide_split_v1
+base_train_config: configs/train_classifier_slide.yaml
+
+output_root: /scratch/jsanchoz/MARTA/experiments/marta_optuna/marta_slide_split_v1/finetune
+storage_path: /scratch/jsanchoz/MARTA/experiments/marta_optuna/marta_slide_split_v1/finetune/optuna.db
+
+direction: "minimize"
+
+n_trials: 100
+timeout_minutes: null
+random_seed: 42
+
+pruning:
+  enabled: false
+
+fixed:
+  # BEST RESULTS IN TUNE_ARCHITECTURE w/ slide data
+  input_mode: "stack"
+  fusion: "dual"
+  head_kind: "mlp"
+  hidden: 256
+  ###
+
+  resize_to: 384
+  num_workers: 1
+  class1_bonus: 1.1
+  decision_threshold: 0.5
+
+search_space:
+  dropout_choices: [0.3, 0.4, 0.5]
+
+  head_lr:
+    low: 1.0e-4
+    high: 1.0e-3
+    log: true
+
+  last_ratio_choices: [0.2, 0.3, 0.35, 0.5]
+  rest_ratio_choices: [0.1, 0.2, 0.333, 0.35]
+
+  stage1_epochs_choices: [4, 6, 8]
+  stage2_epochs_choices: [4, 6, 8]
+  stage3_epochs_choices: [8, 10, 12]
+
+  k_unf_choices: [1, 2, 3]
+  weight_decay_choices: [1e-4, 3e-4, 1e-3]
+
+
+
+

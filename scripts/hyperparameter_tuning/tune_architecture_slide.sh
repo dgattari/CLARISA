@@ -1,15 +1,15 @@
 #!/bin/bash
 #SBATCH --partition=general
-#SBATCH --qos=test
-#SBATCH --job-name=marta_tune_arch
+#SBATCH --qos=regular
+#SBATCH --job-name=marta_tune_arch_slide
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32gb
 #SBATCH --nodes=1
-#SBATCH -o logs/marta_tune_arch_%j.out
+#SBATCH -o logs/marta_tune_arch_slide_%j.out
 
 echo "========================================"
-echo "MARTA architecture tuning started"
+echo "MARTA slide architecture tuning started"
 echo "Date: $(date)"
 echo "Node: $(hostname)"
 echo "========================================"
@@ -47,12 +47,12 @@ python3.10 -c "import src; print('src package found')"
 python3.10 -c "import albumentations; print('albumentations ok')"
 python3.10 -c "import optuna; print('optuna ok')"
 
-echo "Tuning config: /scratch/jsanchoz/MARTA/configs/hyperparameter_tuning/tune_architecture.yaml"
+echo "Tuning config: /scratch/jsanchoz/MARTA/configs/hyperparameter_tuning/tune_architecture_slide.yaml"
 
 python3.10 -m src.train.tune_classifier \
-    --config /scratch/jsanchoz/MARTA/configs/hyperparameter_tuning/tune_architecture.yaml
+    --config /scratch/jsanchoz/MARTA/configs/hyperparameter_tuning/tune_architecture_slide.yaml
 
 echo "========================================"
-echo "MARTA architecture tuning finished"
+echo "MARTA slide architecture tuning finished"
 echo "Date: $(date)"
 echo "========================================"

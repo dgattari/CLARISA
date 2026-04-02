@@ -97,7 +97,9 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
     ts = time.strftime("%Y%m%d_%H%M%S")
     run_name = build_train_run_name(cfg)
 
-    base_dir = EXPERIMENTS_DIR / f"{run_name}_{ts}"
+    #base_dir = EXPERIMENTS_DIR / f"{run_name}_{ts}"
+    split_tag = getattr(cfg, "split_tag", "default_split")
+    base_dir = EXPERIMENTS_DIR / split_tag / f"{run_name}_{ts}"
     base_dir.mkdir(parents=True, exist_ok=True)
 
     log_fp = base_dir / f"train_log_{run_name}.txt"
@@ -215,12 +217,28 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
     )
 
     # ========================
-    # Final evaluation on test
+    # Final evaluation on best checkpoint
     # ========================
-    log("[eval] Evaluating best checkpoint on test split", log_fp)
+    log("[eval] Evaluating best checkpoint on train/val/test splits", log_fp)
     log(f"[eval] Best checkpoint: {train_result['best_ckpt']}", log_fp)
 
-    eval_result = evaluate_saved_checkpoint(
+    train_eval = evaluate_saved_checkpoint(
+        ckpt_path=train_result["best_ckpt"],
+        cfg=cfg,
+        samples=samples,
+        indices=train_idx,
+        device=device
+    )
+
+    val_eval = evaluate_saved_checkpoint(
+        ckpt_path=train_result["best_ckpt"],
+        cfg=cfg,
+        samples=samples,
+        indices=val_idx,
+        device=device
+    )
+
+    test_eval = evaluate_saved_checkpoint(
         ckpt_path=train_result["best_ckpt"],
         cfg=cfg,
         samples=samples,
@@ -228,20 +246,43 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
         device=device
     )
 
-    test_metrics = eval_result["metrics"]
-    fpr = eval_result["fpr"]
-    tpr = eval_result["tpr"]
+    train_metrics = train_eval["metrics"]
+    val_metrics_final = val_eval["metrics"]
+    test_metrics = test_eval["metrics"]
+
+    train_fpr, train_tpr = train_eval["fpr"], train_eval["tpr"]
+    val_fpr, val_tpr = val_eval["fpr"], val_eval["tpr"]
+    test_fpr, test_tpr = test_eval["fpr"], test_eval["tpr"]
 
     # ======================
     # Save test ROC
     # ======================
-    log("[io] Saving ROC curve and final summaries", log_fp)
-    roc_path = base_dir / "roc_test.png"
+    log("[io] Saving ROC curves and final summaries", log_fp)
+
+    roc_train_path = base_dir / "roc_train.png"
     save_roc_curve(
-        fpr=fpr,
-        tpr=tpr,
+        fpr=train_fpr,
+        tpr=train_tpr,
+        auc_value=train_metrics["roc_auc"],
+        out_path=roc_train_path,
+        title=f"ROC train | {run_name}",
+    )
+
+    roc_val_path = base_dir / "roc_val.png"
+    save_roc_curve(
+        fpr=val_fpr,
+        tpr=val_tpr,
+        auc_value=val_metrics_final["roc_auc"],
+        out_path=roc_val_path,
+        title=f"ROC val | {run_name}",
+    )
+
+    roc_test_path = base_dir / "roc_test.png"
+    save_roc_curve(
+        fpr=test_fpr,
+        tpr=test_tpr,
         auc_value=test_metrics["roc_auc"],
-        out_path=roc_path,
+        out_path=roc_test_path,
         title=f"ROC test | {run_name}",
     )
 
@@ -258,13 +299,17 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
         "fusion": cfg.fusion,
         "best_ckpt": train_result["best_ckpt"],
         "best_stage": train_result["best_stage"],
-        "best_val_metrics": train_result["best_val_metrics"],
+        "best_val_metrics_during_training": train_result["best_val_metrics"],
+        "train": train_metrics,
+        "val": val_metrics_final,
         "test": test_metrics,
-        "roc_test_path": str(roc_path),
+        "roc_train_path": str(roc_train_path),
+        "roc_val_path": str(roc_val_path),
+        "roc_test_path": str(roc_test_path),
         "split_info": split_info,
         "config": cfg.__dict__,
     }
-    
+
     summary_path = base_dir / "summary.json"
     with summary_path.open("w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
@@ -281,6 +326,21 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
         "input_mode": cfg.input_mode,
         "fusion": cfg.fusion,
         "best_stage": train_result["best_stage"],
+
+        "train_roc_auc": train_metrics["roc_auc"],
+        "train_pr_auc": train_metrics["pr_auc"],
+        "train_prec1": train_metrics["prec1"],
+        "train_rec1": train_metrics["rec1"],
+        "train_prec0": train_metrics["prec0"],
+        "train_rec0": train_metrics["rec0"],
+
+        "val_roc_auc": val_metrics_final["roc_auc"],
+        "val_pr_auc": val_metrics_final["pr_auc"],
+        "val_prec1": val_metrics_final["prec1"],
+        "val_rec1": val_metrics_final["rec1"],
+        "val_prec0": val_metrics_final["prec0"],
+        "val_rec0": val_metrics_final["rec0"],
+
         "test_roc_auc": test_metrics["roc_auc"],
         "test_pr_auc": test_metrics["pr_auc"],
         "test_prec1": test_metrics["prec1"],
@@ -297,6 +357,20 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
     # W&B final logs
     # ======================
     log_metrics({
+        "train/roc_auc": train_metrics["roc_auc"],
+        "train/pr_auc": train_metrics["pr_auc"],
+        "train/prec1": train_metrics["prec1"],
+        "train/rec1": train_metrics["rec1"],
+        "train/prec0": train_metrics["prec0"],
+        "train/rec0": train_metrics["rec0"],
+
+        "val_final/roc_auc": val_metrics_final["roc_auc"],
+        "val_final/pr_auc": val_metrics_final["pr_auc"],
+        "val_final/prec1": val_metrics_final["prec1"],
+        "val_final/rec1": val_metrics_final["rec1"],
+        "val_final/prec0": val_metrics_final["prec0"],
+        "val_final/rec0": val_metrics_final["rec0"],
+
         "test/roc_auc": test_metrics["roc_auc"],
         "test/pr_auc": test_metrics["pr_auc"],
         "test/prec1": test_metrics["prec1"],
@@ -311,12 +385,23 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
     log_artifact_file(base_dir / "train_result.json", f"{run_name}-train-result", "result")
     log_artifact_file(base_dir / "summary.json", f"{run_name}-summary", "result")
     log_artifact_file(metrics_csv_path, f"{run_name}-metrics-summary", "table")
-    log_artifact_file(roc_path, f"{run_name}-roc-test", "plot")
+
+    log_artifact_file(roc_train_path, f"{run_name}-roc-train", "plot")
+    log_artifact_file(roc_val_path, f"{run_name}-roc-val", "plot")
+    log_artifact_file(roc_test_path, f"{run_name}-roc-test", "plot")
+
 
     finish_wandb(summary={
         "best_stage": train_result["best_stage"],
         "best_val_loss": train_result["best_val_metrics"].get("val_loss", None),
-        "best_val_auc": train_result["best_val_metrics"].get("auc", None),
+        "best_val_auc_during_training": train_result["best_val_metrics"].get("auc", None),
+
+        "train_roc_auc": train_metrics["roc_auc"],
+        "train_pr_auc": train_metrics["pr_auc"],
+
+        "val_roc_auc": val_metrics_final["roc_auc"],
+        "val_pr_auc": val_metrics_final["pr_auc"],
+
         "test_roc_auc": test_metrics["roc_auc"],
         "test_pr_auc": test_metrics["pr_auc"],
     })
@@ -327,7 +412,9 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
     print("Base dir:", base_dir.resolve())
     print("Best checkpoint:", train_result["best_ckpt"])
     print("Best stage:", train_result["best_stage"])
-    print("ROC test:", roc_path.resolve())
+    print("ROC train:", roc_train_path.resolve())
+    print("ROC val:", roc_val_path.resolve())
+    print("ROC test:", roc_test_path.resolve())
 
 if __name__ == "__main__":
     args = parse_args()

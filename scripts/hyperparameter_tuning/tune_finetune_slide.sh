@@ -1,15 +1,15 @@
 #!/bin/bash
 #SBATCH --partition=general
-#SBATCH --qos=regular
-#SBATCH --job-name=marta_tune_finetune
+#SBATCH --qos=long
+#SBATCH --job-name=marta_tune_ft_slide
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=32gb
 #SBATCH --nodes=1
-#SBATCH -o logs/marta_tune_finetune_%j.out
+#SBATCH -o logs/marta_tune_ft_slide_%j.out
 
 echo "========================================"
-echo "MARTA finetune tuning started"
+echo "MARTA slide finetune tuning started"
 echo "Date: $(date)"
 echo "Node: $(hostname)"
 echo "========================================"
@@ -47,12 +47,12 @@ python3.10 -c "import src; print('src package found')"
 python3.10 -c "import albumentations; print('albumentations ok')"
 python3.10 -c "import optuna; print('optuna ok')"
 
-echo "Tuning config: /scratch/jsanchoz/MARTA/configs/hyperparameter_tuning/tune_finetune.yaml"
+echo "Tuning config: /scratch/jsanchoz/MARTA/configs/hyperparameter_tuning/tune_finetune_slide.yaml"
 
 python3.10 -m src.train.tune_classifier \
-    --config /scratch/jsanchoz/MARTA/configs/hyperparameter_tuning/tune_finetune.yaml
+    --config /scratch/jsanchoz/MARTA/configs/hyperparameter_tuning/tune_finetune_slide.yaml
 
 echo "========================================"
-echo "MARTA finetune tuning finished"
+echo "MARTA slide finetune tuning finished"
 echo "Date: $(date)"
 echo "========================================"

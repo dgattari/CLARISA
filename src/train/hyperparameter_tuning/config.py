@@ -105,34 +105,31 @@ def apply_finetune_search_space(cfg, tune_cfg: Dict[str, Any], trial: optuna.Tri
       - dropout
       - staged learning-rate hierarchy
       - stage durations
+      - partial unfreezing depth in stage 2
     """
     ss = tune_cfg.get("search_space", {}) or {}
 
     cfg.dropout = trial.suggest_categorical(
         "dropout",
-        ss.get("dropout_choices", [0.2, 0.3, 0.4, 0.5, 0.6]),
+        ss.get("dropout_choices", [0.3, 0.4, 0.5]),
     )
 
     head_lr_cfg = ss.get("head_lr", {})
     head_lr = trial.suggest_float(
         "head_lr",
         float(head_lr_cfg.get("low", 1e-4)),
-        float(head_lr_cfg.get("high", 3e-3)),
+        float(head_lr_cfg.get("high", 5e-4)),
         log=bool(head_lr_cfg.get("log", True)),
     )
 
-    last_ratio_cfg = ss.get("last_ratio", {})
-    last_ratio = trial.suggest_float(
+    last_ratio = trial.suggest_categorical(
         "last_ratio",
-        float(last_ratio_cfg.get("low", 0.2)),
-        float(last_ratio_cfg.get("high", 1.0)),
+        ss.get("last_ratio_choices", [0.2, 0.35, 0.5]),
     )
 
-    rest_ratio_cfg = ss.get("rest_ratio", {})
-    rest_ratio = trial.suggest_float(
+    rest_ratio = trial.suggest_categorical(
         "rest_ratio",
-        float(rest_ratio_cfg.get("low", 0.1)),
-        float(rest_ratio_cfg.get("high", 1.0)),
+        ss.get("rest_ratio_choices", [0.1, 0.2, 0.35]),
     )
 
     cfg.head_lr = head_lr
@@ -141,16 +138,22 @@ def apply_finetune_search_space(cfg, tune_cfg: Dict[str, Any], trial: optuna.Tri
 
     cfg.stage1_epochs = trial.suggest_categorical(
         "stage1_epochs",
-        ss.get("stage1_epochs_choices", [1, 2, 3, 4, 5, 6]),
+        ss.get("stage1_epochs_choices", [4, 6, 8]),
     )
     cfg.stage2_epochs = trial.suggest_categorical(
         "stage2_epochs",
-        ss.get("stage2_epochs_choices", [1, 2, 3, 4, 5, 6]),
+        ss.get("stage2_epochs_choices", [4, 6, 8]),
     )
     cfg.stage3_epochs = trial.suggest_categorical(
         "stage3_epochs",
-        ss.get("stage3_epochs_choices", [3, 5, 8, 10, 12, 15]),
+        ss.get("stage3_epochs_choices", [8, 10, 12]),
     )
+
+    cfg.k_unf = trial.suggest_categorical(
+        "k_unf",
+        ss.get("k_unf_choices", [1, 2, 3]),
+    )
+
     return cfg
 
 def build_trial_cfg(base_cfg, tune_cfg: Dict[str, Any], trial: optuna.Trial):

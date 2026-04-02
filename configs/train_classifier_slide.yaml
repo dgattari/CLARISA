@@ -1,11 +1,14 @@
 
-# configs/train_classifier.yaml
+# configs/train_classifier.yaml (from trial_67)
 
-random_seed: 42
+split_tag: marta_slide_split_v1
+experiment_tag: slide
 
 # data
 use_precomputed_split: true
-split_dir: "/scratch/jsanchoz/MARTA/experiments/data_splits/marta_split_v1"
+split_dir: /scratch/jsanchoz/MARTA/experiments/data_splits/marta_slide_split_v1
+
+random_seed: 42
 
 # input
 input_mode: stack # small ROI (local context), larger ROI (more context) or 'stack' that combines both
@@ -14,28 +17,30 @@ resize_to: 384
 
 # training
 batch_size: 16
-num_workers: 1 
-stage1_epochs: 5 # training phases (frozen → partial → full)
-stage2_epochs: 5
-stage3_epochs: 10
-k_unf: 2 # number of backbone blocks unfrozen in stage 2
- 
+num_workers: 1
+
+stage1_epochs: 8 # training phases (frozen → partial → full)
+stage2_epochs: 6
+stage3_epochs: 12
+k_unf: 3 # number of backbone blocks unfrozen in stage 2
+
 # optimization
-head_lr: 0.001
-last_lr: 0.0003
-rest_lr: 0.0001
+head_lr: 0.0008522973660566322    
+last_lr: 0.00029830407811982126    
+rest_lr: 0.00010440642734193743  
+
 weight_decay: 0.0001
 class1_bonus: 1.1
 decision_threshold: 0.5
 
 # model
-head_kind: mlp # mlp or logreg
-hidden: 128 # size of hidden layer (MLP only)
-dropout: 0.5 # dropout probability (MLP only)
+head_kind: mlp
+hidden: 256
+dropout: 0.3
 
 # optional expert tracking
-expert_mode: false
-expert_config_path: "/scratch/jsanchoz/MARTA/configs/expert/wandb.yaml"
+expert_mode: true
+expert_config_path: "/scratch/jsanchoz/MARTA/configs/expert/wandb_slide.yaml"
 
   # Caso 1: expert_mode = false
   # No se usa W&B.

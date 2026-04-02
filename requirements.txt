@@ -1,0 +1,17 @@
+numpy<2
+pandas
+matplotlib
+tqdm
+opencv-python
+albumentations
+timm
+torch
+torchvision
+scikit-learn
+openpyxl
+plotly>=5.18
+wandb
+optuna
+
+
+

@@ -1,0 +1,28 @@
+
+# configs/expert/wandb.yaml
+
+wandb:
+  enabled: true
+  project: "MARTA-training"
+  entity: null
+  mode: "online"
+  tags: ["marta", "classifier", "slide_split", "marta_slide_split_v1"]
+  group: "marta_slide_split_v1"
+  job_type: "train"
+  name: null
+  notes: "Official slide-level split experiments"
+
+  watch:
+    enabled: true
+    log: "all" # gradients | parameters | all
+    log_freq: 100
+
+  log_artifacts: true
+  save_model_artifact: true
+
+  epoch_logging:
+    enabled: true
+
+  batch_logging:
+    enabled: false
+    log_every_steps: 20

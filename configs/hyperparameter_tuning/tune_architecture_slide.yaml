@@ -1,0 +1,61 @@
+
+# configs/hyper_tuning/tune_architecture.yaml
+
+# Fase 1 — tune_architecture
+# Objetivo: elegir diseño base, no afinarlo al milímetro.
+
+# Espacio pequeño
+# input_mode: ["256", "384", "stack"]
+# fusion: condicionado a stack, con ["dual", "stack6"]
+# head_kind: ["mlp", "logreg"]
+# hidden: [64, 128] solo si mlp
+# dropout: [0.3, 0.5] solo si mlp
+
+# Fijos
+# learning rates fijos
+# epochs fijas
+# class1_bonus fijo
+# sin pruning agresivo
+# objetivo: best val loss, pero luego mirar también val_auc
+# n_trials recomendado
+# slide split: 10-14 trials
+# roi split: 10-14 trials
+
+study_name: "marta_architecture_slide_v1" 
+search_mode: "architecture"
+
+split_dir: /scratch/jsanchoz/MARTA/experiments/data_splits/marta_slide_split_v1
+base_train_config: configs/train_classifier_slide.yaml
+
+output_root: "/scratch/jsanchoz/MARTA/experiments/marta_optuna/marta_slide_split_v1/architecture"
+storage_path: "/scratch/jsanchoz/MARTA/experiments/marta_optuna/marta_slide_split_v1/architecture/optuna.db"
+
+direction: "minimize"
+n_trials: 14
+timeout_minutes: null
+random_seed: 42
+
+pruning:
+  enabled: false # here we have a reduced search space, not needed
+
+fixed:
+  stage1_epochs: 5
+  stage2_epochs: 5
+  stage3_epochs: 8
+  k_unf: 1
+
+  head_lr: 0.001
+  last_lr: 0.0003
+  rest_lr: 0.0001
+  weight_decay: 0.0001
+  class1_bonus: 1.1
+  decision_threshold: 0.5
+
+search_space:
+  input_mode_choices: ["256", "384", "stack"]
+  fusion_for_stack_choices: ["dual", "stack6"] 
+  head_kind_choices: ["mlp", "logreg"]
+  hidden_choices: [64, 128, 256]
+  dropout_choices: [0.3, 0.5]
+
+ 

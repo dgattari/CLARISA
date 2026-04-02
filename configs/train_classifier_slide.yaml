@@ -1,0 +1,55 @@
+
+# configs/train_classifier.yaml (from trial_67)
+
+split_tag: marta_slide_split_v1
+experiment_tag: slide
+
+# data
+use_precomputed_split: true
+split_dir: /scratch/jsanchoz/MARTA/experiments/data_splits/marta_slide_split_v1
+
+random_seed: 42
+
+# input
+input_mode: stack # small ROI (local context), larger ROI (more context) or 'stack' that combines both
+fusion: dual # 'dual': two parallel streams (recommended) or 'stack6': 6-channel input (simpler, less standard)
+resize_to: 384
+
+# training
+batch_size: 16
+num_workers: 1
+
+stage1_epochs: 8 # training phases (frozen → partial → full)
+stage2_epochs: 6
+stage3_epochs: 12
+k_unf: 3 # number of backbone blocks unfrozen in stage 2
+
+# optimization
+head_lr: 0.0008522973660566322    
+last_lr: 0.00029830407811982126    
+rest_lr: 0.00010440642734193743  
+
+weight_decay: 0.0001
+class1_bonus: 1.1
+decision_threshold: 0.5
+
+# model
+head_kind: mlp
+hidden: 256
+dropout: 0.3
+
+# optional expert tracking
+expert_mode: true
+expert_config_path: "/scratch/jsanchoz/MARTA/configs/expert/wandb_slide.yaml"
+
+  # Caso 1: expert_mode = false
+  # No se usa W&B.
+  # El entrenamiento funciona exactamente igual que ahora.
+
+  # Caso 2: expert_mode = true y hay W&B instalado
+  # tracking with W&B:
+    # - se inicializa una sesion de wandb,
+    # - registra config,
+    # - grafica métricas por fase,
+    # - muestra gradientes/pesos,
+    # - guarda checkpoints y artefactos finales.

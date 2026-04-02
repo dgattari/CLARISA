@@ -1,0 +1,82 @@
+{
+  "run_dir": "/scratch/jsanchoz/MARTA/experiments/marta_classifier/marta_slide_split_v1/mlp_h256_d0.3_stack_dual_20260401_180920",
+  "run_name": "mlp_h256_d0.3_stack_dual",
+  "head": "mlp",
+  "hidden": 256,
+  "dropout": 0.3,
+  "input_mode": "stack",
+  "fusion": "dual",
+  "best_ckpt": "experiments/marta_classifier/marta_slide_split_v1/mlp_h256_d0.3_stack_dual_20260401_180920/best_stage3_full.pth",
+  "best_stage": "stage3",
+  "best_val_metrics_during_training": {
+    "val_loss": 0.054462440969312895,
+    "auc": 0.85,
+    "prec1": 0.6,
+    "rec1": 0.5,
+    "prec0": 0.8301886792452831,
+    "rec0": 0.88
+  },
+  "train": {
+    "roc_auc": 0.9976905980135671,
+    "pr_auc": 0.9962979163364332,
+    "prec1": 0.9746606334841629,
+    "rec1": 0.9547872340425532,
+    "prec0": 0.9725953788285868,
+    "rec0": 0.984766050054407,
+    "threshold": 0.5
+  },
+  "val": {
+    "roc_auc": 0.85,
+    "pr_auc": 0.7395841908577127,
+    "prec1": 0.6,
+    "rec1": 0.5,
+    "prec0": 0.8301886792452831,
+    "rec0": 0.88,
+    "threshold": 0.5
+  },
+  "test": {
+    "roc_auc": 0.8544238683127572,
+    "pr_auc": 0.7440201166451944,
+    "prec1": 0.7619047619047619,
+    "rec1": 0.6666666666666666,
+    "prec0": 0.9047619047619048,
+    "rec0": 0.9382716049382716,
+    "threshold": 0.5
+  },
+  "roc_train_path": "experiments/marta_classifier/marta_slide_split_v1/mlp_h256_d0.3_stack_dual_20260401_180920/roc_train.png",
+  "roc_val_path": "experiments/marta_classifier/marta_slide_split_v1/mlp_h256_d0.3_stack_dual_20260401_180920/roc_val.png",
+  "roc_test_path": "experiments/marta_classifier/marta_slide_split_v1/mlp_h256_d0.3_stack_dual_20260401_180920/roc_test.png",
+  "split_info": {
+    "n_total": 3139,
+    "n_train": 2966,
+    "n_val": 68,
+    "n_test": 105
+  },
+  "config": {
+    "split_tag": "marta_slide_split_v1",
+    "experiment_tag": "slide",
+    "random_seed": 42,
+    "batch_size": 16,
+    "num_workers": 1,
+    "input_mode": "stack",
+    "fusion": "dual",
+    "resize_to": 384,
+    "stage1_epochs": 8,
+    "stage2_epochs": 6,
+    "stage3_epochs": 12,
+    "k_unf": 3,
+    "head_lr": 0.0008522973660566322,
+    "last_lr": 0.00029830407811982126,
+    "rest_lr": 0.00010440642734193743,
+    "weight_decay": 0.0001,
+    "class1_bonus": 1.1,
+    "decision_threshold": 0.5,
+    "head_kind": "mlp",
+    "hidden": 256,
+    "dropout": 0.3,
+    "expert_mode": true,
+    "expert_config_path": "/scratch/jsanchoz/MARTA/configs/expert/wandb_slide.yaml",
+    "use_precomputed_split": true,
+    "split_dir": "/scratch/jsanchoz/MARTA/experiments/data_splits/marta_slide_split_v1"
+  }
+}

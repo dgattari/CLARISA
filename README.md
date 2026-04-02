@@ -197,17 +197,37 @@ For methodology, configuration, outputs, and execution examples, see:
 
 ---
 
-
 ## Inference
 The inference module is intended to apply a trained MARTA checkpoint to new cardiac tissue images in order to detect ROIs, classify them, and summarize the spatial distribution of CX43 across the image or across multiple sections.
 
 Given one or more input images and a trained checkpoint, the pipeline performs ROI detection, ROI-by-ROI inference, embedding analysis, heatmap generation, and export of quantitative and visual outputs. 
 
+### Using a pretrained model
+This repository provides a ready-to-use trained model in the folder: `/trained_model/`
+
+This folder contains:
+- a final trained checkpoint (`best_stage3_full.pth`)
+- training summary and performance metrics
+- the exact data split used during training
+- additional reproducibility artifacts
+
+You can directly use this model for inference without retraining:
+
+```bash
+--ckpt trained_model/best_stage3_full.pth
+```
+
+Alternatively, you may train your own model (see `\Training`
+) and use your own checkpoint.
+
+For full details about the provided model and its provenance, see:
+`trained_model/README_model.md`
+
 ### Single-image inference
 ```bash
 python -m src.inference.single_image \
     --image path/to/image.png \
-    --ckpt path/to/best_stage3_full.pth \
+    --ckpt trained_model/best_stage3_full.pth  # or your own checkpoint
     --outdir infer_test \
     --config configs/inference.yaml
 ```
@@ -228,7 +248,7 @@ This will:
 ```bash
 python -m src.inference.batch_grid \
     --folder_images path/to/folder \
-    --ckpt path/to/best_stage3_full.pth \
+    --ckpt trained_model/best_stage3_full.pth  # or your own checkpoint
     --outdir infer_batch \
     --config configs/inference.yaml
 ```

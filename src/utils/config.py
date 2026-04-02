@@ -39,10 +39,6 @@ class TrainConfig:
     batch_size: int = 16
     num_workers: int = 4
 
-    # Group split (anti-leakage)
-    use_group_split: bool = False
-    group_key: str = "image_path"
-
     # Entradas
     input_mode: str = "stack"   # '256', '384', 'stack'
     fusion: str = "dual"        # 'dual' o 'stack6'

@@ -1,0 +1,44 @@
+{
+  "IM1313": {
+    "n_total": 48,
+    "class_0": 43,
+    "class_1": 5,
+    "pct_class_0": 89.58,
+    "pct_class_1": 10.42
+  },
+  "IM1314": {
+    "n_total": 57,
+    "class_0": 38,
+    "class_1": 19,
+    "pct_class_0": 66.67,
+    "pct_class_1": 33.33
+  },
+  "IM1315": {
+    "n_total": 68,
+    "class_0": 50,
+    "class_1": 18,
+    "pct_class_0": 73.53,
+    "pct_class_1": 26.47
+  },
+  "IM133": {
+    "n_total": 114,
+    "class_0": 110,
+    "class_1": 4,
+    "pct_class_0": 96.49,
+    "pct_class_1": 3.51
+  },
+  "IM6": {
+    "n_total": 1348,
+    "class_0": 567,
+    "class_1": 781,
+    "pct_class_0": 42.06,
+    "pct_class_1": 57.94
+  },
+  "IM9": {
+    "n_total": 1504,
+    "class_0": 1161,
+    "class_1": 343,
+    "pct_class_0": 77.19,
+    "pct_class_1": 22.81
+  }
+}

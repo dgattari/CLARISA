@@ -1,0 +1,24 @@
+{
+  "split_name": "marta_slide_split_v1",
+  "strategy": "manual_groups",
+  "random_seed": 42,
+  "n_total": 3139,
+  "n_train": 2966,
+  "n_val": 68,
+  "n_test": 105,
+  "group_definition": "slide_id",
+  "group_key": "slide_id",
+  "notes": "Official slide-level split for main paper experiments. Chosen to reduce leakage across ROIs from related slides/images.\n",
+  "train_groups": [
+    "IM6",
+    "IM9",
+    "IM133"
+  ],
+  "val_groups": [
+    "IM1315"
+  ],
+  "test_groups": [
+    "IM1313",
+    "IM1314"
+  ]
+}

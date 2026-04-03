@@ -1,5 +1,5 @@
 
-# configs/train_classifier.yaml (from trial_67)
+# configs/train_classifier.yaml (from trial_24)
 
 split_tag: marta_slide_split_v1
 experiment_tag: slide
@@ -19,24 +19,24 @@ resize_to: 384
 batch_size: 16
 num_workers: 1
 
-stage1_epochs: 8 # training phases (frozen → partial → full)
-stage2_epochs: 6
-stage3_epochs: 12
-k_unf: 3 # number of backbone blocks unfrozen in stage 2
+stage1_epochs: 6  # training phases (frozen → partial → full)
+stage2_epochs: 4
+stage3_epochs: 10
+k_unf: 2 # number of backbone blocks unfrozen in stage 2
 
 # optimization
-head_lr: 0.0008522973660566322    
-last_lr: 0.00029830407811982126    
-rest_lr: 0.00010440642734193743  
+head_lr: 0.0009826069601802311
+last_lr: 0.00034391243606308097
+rest_lr: 0.00011452284120900598
 
-weight_decay: 0.0001
+weight_decay: 0.0001 
 class1_bonus: 1.1
 decision_threshold: 0.5
 
 # model
 head_kind: mlp
 hidden: 256
-dropout: 0.3
+dropout: 0.5
 
 # optional expert tracking
 expert_mode: true

@@ -164,11 +164,7 @@ def main(config_path: str | Path = "configs/train_classifier.yaml"):
         f"[split] Strategy: {'precomputed' if getattr(cfg, 'use_precomputed_split', False) else strategy}",
         log_fp,
     )
-    log(
-        f"[split] Group split: enabled={cfg.use_group_split} group_key={cfg.group_key}",
-        log_fp,
-    )
-
+    
     # ======================
     # Save config / split info
     # ======================

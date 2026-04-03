@@ -203,7 +203,17 @@ The inference module is intended to apply a trained MARTA checkpoint to new card
 Given one or more input images and a trained checkpoint, the pipeline performs ROI detection, ROI-by-ROI inference, embedding analysis, heatmap generation, and export of quantitative and visual outputs. 
 
 ### Using a pretrained model
-This repository provides a ready-to-use trained model in the folder: `/trained_model/`
+This repository provides a ready-to-use trained model via the `/trained_model/` folder.
+
+Due to file size limitations, the model checkpoint must be downloaded separately from Hugging Face:
+
+👉 https://huggingface.co/jsanchoz/marta-cx43-slide-classifier
+
+After downloading, place the checkpoint file at:
+
+```bash
+trained_model/best_stage3_full.pth
+```
 
 This folder contains:
 - a final trained checkpoint (`best_stage3_full.pth`)
@@ -217,8 +227,7 @@ You can directly use this model for inference without retraining:
 --ckpt trained_model/best_stage3_full.pth
 ```
 
-Alternatively, you may train your own model (see `\Training`
-) and use your own checkpoint.
+Alternatively, you may train your own model (see `\Training`) and use your own checkpoint.
 
 For full details about the provided model and its provenance, see:
 `trained_model/README_model.md`

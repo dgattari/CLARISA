@@ -13,6 +13,16 @@ The model was trained using a fixed slide-level data split designed to prevent l
   Final trained model checkpoint selected based on minimum validation loss during training.  
   This is the model to be used for inference.
 
+⚠️ The checkpoint file is not stored directly in this repository due to its size.
+
+You can download it from Hugging Face:
+
+👉 https://huggingface.co/jsanchoz/marta-cx43-slide-classifier
+
+After downloading, place the file in this folder: `trained_model/best_stage3_full.pth`
+
+No Hugging Face account is required to download the model.
+
 ---
 
 ### Training summary

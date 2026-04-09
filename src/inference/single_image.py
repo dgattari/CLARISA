@@ -1,5 +1,5 @@
 
-# src/inference/single_image.py 
+# src/inference/single_image.py
 
 """
 single_image.py
@@ -7,20 +7,22 @@ single_image.py
 Inferencia principal de MARTA sobre una imagen única a partir de un checkpoint
 y una configuración YAML.
 
-Este script conserva la lógica general del antiguo
-MARTA_INFER_TSNE_MULTIINPUT_AREALAT_v2.py, pero separa responsabilidades en
-módulos más pequeños para facilitar:
+Diseño unificado (sin flag soft/hard): el método siempre entrega los
+siguientes outputs para cada imagen procesada:
 
-  - inferencia reproducible
-  - mantenimiento del código
-  - análisis ROI a ROI
-  - generación de overlays, heatmaps y t-SNE
-
-Notas:
-  - La implementación reutiliza funciones heredadas del código original de Dani
-    siempre que ha sido posible.
-  - El objetivo de esta refactorización es organizar el código, no cambiar
-    la lógica metodológica de la inferencia.
+  1) heatmap continuo de lateralización (interpolación Gaussiana)
+  2) classification overlay (ROIs rellenas con su label asignado)
+  3) Métricas primarias A (basadas en área):
+       - pct_lat_area_all  : % del área CX43 clasificada como lateralizada,
+                             sobre el área total de ROIs detectadas.
+       - pct_lat_area_conf : % del área CX43 clasificada como lateralizada,
+                             sobre el área de ROIs con label asignado
+                             (excluye indeterminadas).
+  4) Métricas complementarias B (basadas en heatmap):
+       - pct_lat_heat_all  : promedio del heatmap H(x,y) sobre el área total
+                             de ROIs detectadas.
+       - pct_lat_heat_conf : promedio del heatmap H(x,y) sobre el área de
+                             ROIs con label asignado.
 """
 import argparse
 from pathlib import Path
@@ -42,7 +44,7 @@ from .analysis import (
     save_classification_overlay,
     save_interactive_roi_html,
     run_tsne_analysis,
-    build_lateralization_heatmap,
+    build_continuous_heatmap,
     compute_global_lateralization_metrics,
     save_heatmap_outputs,
     build_inference_summary,
@@ -70,6 +72,7 @@ def run_single_image_inference(
     outdir: Path,
     config_path: str | Path = "configs/inference.yaml",
 ):
+    ensure_dir(outdir)
     log_fp = outdir / "inference_log.txt"
     log("[infer] Starting single-image inference", log_fp)
     log(f"[infer] Image path: {image_path}", log_fp)
@@ -79,7 +82,7 @@ def run_single_image_inference(
 
     log("[infer] Loading inference config", log_fp)
     infer_cfg = load_inference_config(config_path)
-    ensure_dir(outdir)
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     log(f"[infer] Device: {device}", log_fp)
 
@@ -109,7 +112,7 @@ def run_single_image_inference(
         device=device,
     )
     log(f"[infer] Number of ROIs to process: {len(rois)}", log_fp)
-    
+
     base_name = image_path.stem
 
     log("[io] Saving ROI results table", log_fp)
@@ -124,14 +127,14 @@ def run_single_image_inference(
         log(f"[io] XLSX path: {xlsx_path}", log_fp)
 
     log("[viz] Saving classification overlay", log_fp)
-    overlay_path = save_classification_overlay(
+    classification_overlay_path = save_classification_overlay(
         image_bgr=image_bgr,
         contours=contours,
         results=results,
         outdir=outdir,
         base_name=base_name,
     )
-    log(f"[viz] Overlay path: {overlay_path}", log_fp)
+    log(f"[viz] Classification overlay path: {classification_overlay_path}", log_fp)
 
     log("[viz] Saving interactive ROI HTML", log_fp)
     html_img_path = save_interactive_roi_html(
@@ -144,46 +147,37 @@ def run_single_image_inference(
     )
     log(f"[viz] HTML path: {html_img_path}", log_fp)
 
-    log("[tsne] Running t-SNE analysis", log_fp)
-    _, tsne_csv_path, tsne_html_path = run_tsne_analysis(
-        feats_all=feats_all,
-        results=results,
-        outdir=outdir,
-        base_name=base_name,
-        perplexity=infer_cfg.perplexity,
-        input_mode=input_mode,
-        fusion=fusion,
-        random_seed=infer_cfg.random_seed,
-    )
-    log(f"[tsne] Perplexity: {infer_cfg.perplexity}", log_fp)
-    log(f"[tsne] HTML path: {tsne_html_path}", log_fp)
+    log("[tsne] Skipped", log_fp)
+    tsne_csv_path = None
+    tsne_html_path = None
 
-    log("[heatmap] Building lateralization heatmap", log_fp)
-    heat = build_lateralization_heatmap(
+    log("[heatmap] Building continuous lateralization heatmap", log_fp)
+    heatmap = build_continuous_heatmap(
         image_shape=image_bgr.shape[:2],
-        contours=contours,
         results=results,
-        soft=infer_cfg.soft,
         sigma=infer_cfg.sigma,
     )
 
     log("[heatmap] Computing global lateralization metrics", log_fp)
     global_metrics = compute_global_lateralization_metrics(
-        heat=heat,
+        heatmap=heatmap,
         contours=contours,
         results=results,
-        soft=infer_cfg.soft,
         image_shape=image_bgr.shape[:2],
     )
+    log(f"[metrics] pct_lat_area_all  = {global_metrics['pct_lat_area_all']:.2f}%", log_fp)
+    log(f"[metrics] pct_lat_area_conf = {global_metrics['pct_lat_area_conf']:.2f}%", log_fp)
+    log(f"[metrics] pct_lat_heat_all  = {global_metrics['pct_lat_heat_all']:.2f}%", log_fp)
+    log(f"[metrics] pct_lat_heat_conf = {global_metrics['pct_lat_heat_conf']:.2f}%", log_fp)
 
-    heatmap_path, lcr_overlay_path = save_heatmap_outputs(
+    heatmap_path, heatmap_overlay_path = save_heatmap_outputs(
         image_bgr=image_bgr,
-        heat=heat,
+        heatmap=heatmap,
         outdir=outdir,
         base_name=base_name,
     )
     log(f"[heatmap] Heatmap path: {heatmap_path}", log_fp)
-    log(f"[heatmap] Overlay path: {lcr_overlay_path}", log_fp)
+    log(f"[heatmap] Heatmap overlay path: {heatmap_overlay_path}", log_fp)
 
     log("[io] Saving inference summary", log_fp)
     summary = build_inference_summary(
@@ -194,16 +188,15 @@ def run_single_image_inference(
         results=results,
         input_mode=input_mode,
         fusion=fusion,
-        soft=infer_cfg.soft,
         sigma=infer_cfg.sigma,
         csv_path=csv_path,
         xlsx_path=xlsx_path,
-        overlay_path=overlay_path,
+        overlay_path=classification_overlay_path,
         html_img_path=html_img_path,
         tsne_csv_path=tsne_csv_path,
         tsne_html_path=tsne_html_path,
         heatmap_path=heatmap_path,
-        lcr_overlay_path=lcr_overlay_path,
+        heatmap_overlay_path=heatmap_overlay_path,
         global_metrics=global_metrics,
     )
     save_summary_json(summary, outdir)
@@ -236,42 +229,3 @@ if __name__ == "__main__":
         outdir=args.outdir,
         config_path=args.config,
     )
-
-
-# info extra que no se si voy a usar. 
-# Mejoras pequeñas que haría ya
-# 1. io.py
-
-# Añadiría helpers simples que te van a servir tanto en train como en inferencia:
-
-# read_yaml
-
-# write_json
-
-# ensure_dir
-
-# Ahora mismo Dani los tiene dispersos.
-
-# 2. paths.py
-
-# No forzaría rutas globales en inferencia. Para inferencia es mejor pasar:
-
-# image_path
-
-# ckpt_path
-
-# outdir
-
-# por argumentos o config.
-
-# 3. analysis.py
-
-# Separaría bien:
-
-# artefactos tabulares
-
-# artefactos visuales
-
-# métricas globales
-
-# Eso luego te ayudará muchísimo si quieres desactivar t-SNE o HTML en cluster.

@@ -2,20 +2,33 @@
 # src/inference/analysis.py
 # Este módulo responde a:
 # “Con las predicciones ya hechas, ¿cómo genero todos los artefactos finales?”
- 
+
 """
 analysis.py
 -----------
 Postproceso y artefactos finales de inferencia.
 
-Responsabilidades:
-  - guardar tablas ROI a ROI
-  - generar overlays
-  - generar HTML interactivo
-  - ejecutar t-SNE y guardar outputs
-  - construir heatmaps
-  - calcular métricas globales
-  - generar summary.json
+Diseño unificado (sin flag soft/hard):
+  El módulo entrega siempre, para cada imagen procesada:
+
+    1) Heatmap continuo de lateralización
+       Interpolación Gaussiana de las probabilidades ROI-level.
+       Rol: salida visual principal.
+
+    2) Classification overlay
+       Contornos de las ROIs coloreados según su label asignado
+       (clase 0, clase 1, o indeterminado).
+       Rol: visualización directa de la decisión discreta del clasificador.
+
+    3) Métricas A (primarias, basadas en área — discretas)
+       - pct_lat_area_all  : área de ROIs clase 1 / área total de ROIs detectadas
+       - pct_lat_area_conf : área de ROIs clase 1 / área de ROIs con label asignado
+                              (excluye indeterminadas)
+
+    4) Métricas B (complementarias, basadas en heatmap — continuas)
+       - pct_lat_heat_all  : promedio de H(x,y) sobre el área de TODAS las ROIs
+       - pct_lat_heat_conf : promedio de H(x,y) sobre el área de las ROIs con
+                              label asignado
 """
 
 import json
@@ -30,11 +43,11 @@ from PIL import Image as PILImage
 from sklearn.manifold import TSNE
 
 # ============================
-# Plotly helpers (TSNE + buscador) — FIX de etiquetas
+# Plotly helpers (TSNE + buscador)
 # ============================
 def write_tsne_html_with_search(
-    out_html: Path, 
-    df_tsne: pd.DataFrame, 
+    out_html: Path,
+    df_tsne: pd.DataFrame,
     title: str,
 ) -> None:
 
@@ -115,35 +128,26 @@ gd.on('plotly_click', function(ev) {{
     out_html.write_text(html, encoding='utf-8')
 
 # ============================
-# Heatmap y overlays
+# Colorbar helpers
 # ============================
-def gaussian2d(height: int, width: int, cx: int, cy: int, sigma: float) -> np.ndarray:
-    yy, xx = np.mgrid[0:height, 0:width]
-    return np.exp(-((xx - cx) ** 2 + (yy - cy) ** 2) / (2 * sigma * sigma))
-
-# Nota
-# Aunque en el script actual luego haces la versión con cv2.GaussianBlur, esta 
-# función se puede mantener si quieres conservar el método alternativo.
-
 def attach_colorbar_right_gray(
     image_gray_01: np.ndarray,
     vmin: float = 0.0,
     vmax: float = 1.0,
     height: int | None = None,
 ) -> np.ndarray:
-    """Barra vertical 0-1 (gris) concatenada a la derecha de una imagen GRIS."""
     if height is None:
-        height = img_gray_0_1.shape[0]
-    
+        height = image_gray_01.shape[0]
+
     bar = np.linspace(1.0, 0.0, height).reshape(height, 1)
     bar_rgb = (np.clip(bar, 0, 1) * 255).astype(np.uint8)
-    bar_rgb = np.repeat(bar_rgb, 30, axis=1)  # ancho 30 px
+    bar_rgb = np.repeat(bar_rgb, 30, axis=1)
     bar_rgb = cv2.cvtColor(bar_rgb, cv2.COLOR_GRAY2BGR)
 
     cv2.putText(bar_rgb, f"{int(vmax*100)}%", (2, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255,255,255), 1, cv2.LINE_AA)
     cv2.putText(bar_rgb, f"{int(vmin*100)}%", (2, height-6), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255,255,255), 1, cv2.LINE_AA)
-    
-    heat_rgb = cv2.cvtColor((img_gray_0_1*255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
+
+    heat_rgb = cv2.cvtColor((image_gray_01*255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
     return np.concatenate([heat_rgb, bar_rgb], axis=1)
 
 def attach_colorbar_right_rgb(
@@ -151,18 +155,19 @@ def attach_colorbar_right_rgb(
     vmin: float = 0.0,
     vmax: float = 1.0,
 ) -> np.ndarray:
-    """Genera una barra vertical TURBO 0-1 y la concatena a la derecha de una imagen RGB/BGR."""
     h = overlay_bgr.shape[0]
     bar = np.linspace(1.0, 0.0, h).reshape(h, 1)
     bar_u8 = (np.clip(bar, 0, 1) * 255).astype(np.uint8)
-    bar_color = cv2.applyColorMap(bar_u8, cv2.COLORMAP_TURBO)  # BGR
+    bar_color = cv2.applyColorMap(bar_u8, cv2.COLORMAP_TURBO)
 
     cv2.putText(bar_color, f"{int(vmax*100)}%", (2, 14), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255,255,255), 1, cv2.LINE_AA)
     cv2.putText(bar_color, f"{int(vmin*100)}%", (2, h-6), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255,255,255), 1, cv2.LINE_AA)
 
     return np.concatenate([overlay_bgr, bar_color], axis=1)
- 
+
+# ============================
 # Guardado de tabla ROI
+# ============================
 def save_roi_results_table(
     results: List[Dict[str, Any]],
     outdir: Path,
@@ -185,7 +190,9 @@ def save_roi_results_table(
 
     return csv_path, xlsx_path, df
 
-# Overlay coloreado por contornos
+# ============================
+# Classification overlay (ROIs coloreadas por label)
+# ============================
 def save_classification_overlay(
     image_bgr: np.ndarray,
     contours: List[Any],
@@ -214,7 +221,9 @@ def save_classification_overlay(
     cv2.imwrite(str(out_path), overlay)
     return out_path
 
+# ============================
 # HTML interactivo sobre imagen
+# ============================
 def save_interactive_roi_html(
     image_bgr: np.ndarray,
     df_results: pd.DataFrame,
@@ -278,7 +287,9 @@ def save_interactive_roi_html(
     fig.write_html(str(out_path))
     return out_path
 
+# ============================
 # t-SNE
+# ============================
 def run_tsne_analysis(
     feats_all: List[np.ndarray],
     results: List[Dict[str, Any]],
@@ -331,118 +342,168 @@ def run_tsne_analysis(
 
     return df_tsne, csv_path, html_path
 
-# Construcción del heatmap
-def build_lateralization_heatmap(
+# ============================
+# Construcción del heatmap continuo
+# ============================
+def build_continuous_heatmap(
     image_shape: Tuple[int, int],
-    contours: List[Any],
     results: List[Dict[str, Any]],
-    soft: bool,
     sigma: float,
 ) -> np.ndarray:
+    """
+    Construye el heatmap continuo de lateralización por interpolación
+    espacial Gaussiana de las probabilidades ROI-level.
+
+    Para cada ROI válida se acumula su prob_1 en el centro del bounding box
+    (mapa P) y un +1 en el mismo lugar (mapa W). Ambos mapas se convolucionan
+    con un kernel Gaussiano de desviación estándar sigma, y el heatmap final
+    se obtiene como:
+
+        H(x,y) = (P * G_sigma)(x,y) / max((W * G_sigma)(x,y), eps)
+
+    Esto corresponde a un estimador tipo Nadaraya-Watson: promedio local
+    ponderado de las probabilidades de clase 1 de las ROIs vecinas.
+    """
     h, w = image_shape
+    p_map = np.zeros((h, w), dtype=np.float32)
+    w_map = np.zeros((h, w), dtype=np.float32)
 
-    if soft:
-        p_map = np.zeros((h, w), dtype=np.float32)
-        w_map = np.zeros((h, w), dtype=np.float32)
+    for r in results:
+        if not r["valid"]:
+            continue
 
-        for r in results:
-            if not r["valid"]:
-                continue
+        cx = int((r["x1"] + r["x2"]) / 2)
+        cy = int((r["y1"] + r["y2"]) / 2)
 
-            cx = int((r["x1"] + r["x2"]) / 2)
-            cy = int((r["y1"] + r["y2"]) / 2)
+        if 0 <= cx < w and 0 <= cy < h:
+            p_map[cy, cx] += float(r["prob_1"])
+            w_map[cy, cx] += 1.0
 
-            if 0 <= cx < w and 0 <= cy < h:
-                p_map[cy, cx] += float(r["prob_1"])
-                w_map[cy, cx] += 1.0
+    p_blur = cv2.GaussianBlur(
+        p_map, ksize=(0, 0),
+        sigmaX=sigma, sigmaY=sigma,
+        borderType=cv2.BORDER_REFLECT,
+    )
+    w_blur = cv2.GaussianBlur(
+        w_map, ksize=(0, 0),
+        sigmaX=sigma, sigmaY=sigma,
+        borderType=cv2.BORDER_REFLECT,
+    )
 
-        p_blur = cv2.GaussianBlur(p_map, ksize=(0, 0), sigmaX=sigma, sigmaY=sigma, borderType=cv2.BORDER_REFLECT)
-        w_blur = cv2.GaussianBlur(w_map, ksize=(0, 0), sigmaX=sigma, sigmaY=sigma, borderType=cv2.BORDER_REFLECT)
+    return p_blur / np.maximum(w_blur, 1e-8)
 
-        return p_blur / np.maximum(w_blur, 1e-8)
-
-    heat = np.zeros((h, w), dtype=np.float32)
-    for cnt, r in zip(contours, results):
-        if r["final_label"] == 1:
-            cv2.drawContours(heat, [cnt], -1, 1.0, thickness=cv2.FILLED)
-        elif r["final_label"] == 0:
-            cv2.drawContours(heat, [cnt], -1, 0.0, thickness=cv2.FILLED)
-
-    return heat
-
-# Nota
-# Si usas la versión blur, no necesitas pasar gaussian2d.
-
+# ============================
 # Métricas globales
+# ============================
 def compute_global_lateralization_metrics(
-    heat: np.ndarray,
+    heatmap: np.ndarray,
     contours: List[Any],
     results: List[Dict[str, Any]],
-    soft: bool,
     image_shape: Tuple[int, int],
 ) -> Dict[str, Any]:
+    """
+    Calcula las métricas globales de lateralización.
+
+    Métricas A (primarias, basadas en área — discretas):
+        - pct_lat_area_all  : 100 * area_clase_1 / area_total_ROIs
+        - pct_lat_area_conf : 100 * area_clase_1 / area_ROIs_con_label
+
+    Métricas B (complementarias, basadas en heatmap — continuas):
+        - pct_lat_heat_all  : 100 * mean(H) sobre el area de TODAS las ROIs
+        - pct_lat_heat_conf : 100 * mean(H) sobre el area de las ROIs con label
+    """
     h, w = image_shape
 
-    mask_roi = np.zeros((h, w), dtype=np.uint8)
+    mask_all = np.zeros((h, w), dtype=np.uint8)
     for cnt in contours:
-        cv2.drawContours(mask_roi, [cnt], -1, 1, thickness=cv2.FILLED)
+        cv2.drawContours(mask_all, [cnt], -1, 1, thickness=cv2.FILLED)
 
     mask_conf = np.zeros((h, w), dtype=np.uint8)
     for cnt, r in zip(contours, results):
         if r["final_label"] in (0, 1):
             cv2.drawContours(mask_conf, [cnt], -1, 1, thickness=cv2.FILLED)
 
-    denom_all = int((mask_roi > 0).sum())
-    denom_conf = int((mask_conf > 0).sum())
-
-    if soft:
-        p_global_all = float(np.sum(heat * (mask_roi > 0)) / denom_all) if denom_all > 0 else float("nan")
-        p_global_excl = float(np.sum(heat * (mask_conf > 0)) / denom_conf) if denom_conf > 0 else float("nan")
-    else:
-        p_global_all = float(np.sum((heat > 0.5) & (mask_roi > 0)) / denom_all) if denom_all > 0 else float("nan")
-        p_global_excl = float(np.sum((heat > 0.5) & (mask_conf > 0)) / denom_conf) if denom_conf > 0 else float("nan")
-
-    mask_cls1 = np.zeros((h, w), np.uint8)
+    mask_cls1 = np.zeros((h, w), dtype=np.uint8)
     for cnt, r in zip(contours, results):
         if r["final_label"] == 1:
             cv2.drawContours(mask_cls1, [cnt], -1, 1, thickness=cv2.FILLED)
 
-    area1 = int(mask_cls1.sum())
-    area_total = int((mask_roi > 0).sum())
-    p_global_area = area1 / area_total if area_total > 0 else float("nan")
+    denom_all = int((mask_all > 0).sum())
+    denom_conf = int((mask_conf > 0).sum())
+    area_cls1 = int((mask_cls1 > 0).sum())
+
+    # Metricas A (area, primarias)
+    if denom_all > 0:
+        pct_area_all = 100.0 * area_cls1 / denom_all
+    else:
+        pct_area_all = float("nan")
+
+    if denom_conf > 0:
+        pct_area_conf = 100.0 * area_cls1 / denom_conf
+    else:
+        pct_area_conf = float("nan")
+
+    # Metricas B (heatmap, complementarias)
+    if denom_all > 0:
+        pct_heat_all = 100.0 * float(np.sum(heatmap * (mask_all > 0)) / denom_all)
+    else:
+        pct_heat_all = float("nan")
+
+    if denom_conf > 0:
+        pct_heat_conf = 100.0 * float(np.sum(heatmap * (mask_conf > 0)) / denom_conf)
+    else:
+        pct_heat_conf = float("nan")
 
     return {
-        "pct_global_lateralizacion": float(p_global_all * 100.0),
-        "pct_global_lateralizacion_excl_indecisos": float(p_global_excl * 100.0),
-        "pct_global_lateralizacion_area_hard": float(p_global_area * 100.0),
-        "denom_all": int(denom_all),
-        "denom_excl": int(denom_conf),
+        "pct_lat_area_all": float(pct_area_all),
+        "pct_lat_area_conf": float(pct_area_conf),
+        "pct_lat_heat_all": float(pct_heat_all),
+        "pct_lat_heat_conf": float(pct_heat_conf),
+        "denom_all_px": int(denom_all),
+        "denom_conf_px": int(denom_conf),
+        "area_cls1_px": int(area_cls1),
     }
 
-# Guardado de heatmap y overlay heatmap
+# ============================
+# Guardado de heatmap + overlay del heatmap
+# ============================
 def save_heatmap_outputs(
     image_bgr: np.ndarray,
-    heat: np.ndarray,
+    heatmap: np.ndarray,
     outdir: Path,
     base_name: str,
     alpha: float = 0.4,
 ) -> Tuple[Path, Path]:
-    heat_01 = (heat - np.nanmin(heat)) / max(1e-8, (np.nanmax(heat) - np.nanmin(heat)))
+    """
+    Guarda dos archivos derivados del heatmap continuo:
+      - <base>_heatmap.jpg         : heatmap en escala de grises con colorbar.
+      - <base>_heatmap_overlay.jpg : overlay TURBO del heatmap sobre la imagen
+                                     original, con colorbar.
+    """
+    heat_min = float(np.nanmin(heatmap))
+    heat_max = float(np.nanmax(heatmap))
+    heat_range = max(1e-8, heat_max - heat_min)
+    heat_01 = (heatmap - heat_min) / heat_range
 
-    heat_withbar = attach_colorbar_right_gray(heat_01, vmin=0.0, vmax=1.0, height=image_bgr.shape[0])
-    heatmap_path = outdir / f"{base_name}_heatmap_arealateralizacion.jpg"
+    heat_withbar = attach_colorbar_right_gray(
+        heat_01, vmin=0.0, vmax=1.0, height=image_bgr.shape[0]
+    )
+    heatmap_path = outdir / f"{base_name}_heatmap.jpg"
     cv2.imwrite(str(heatmap_path), heat_withbar)
 
     heat_u8 = (np.clip(heat_01, 0, 1) * 255).astype(np.uint8)
     heat_color = cv2.applyColorMap(heat_u8, cv2.COLORMAP_TURBO)
-    overlay_lcr = cv2.addWeighted(image_bgr, 1.0 - alpha, heat_color, alpha, 0)
-    overlay_withbar = attach_colorbar_right_rgb(overlay_lcr, vmin=0.0, vmax=1.0)
+    overlay = cv2.addWeighted(image_bgr, 1.0 - alpha, heat_color, alpha, 0)
+    overlay_withbar = attach_colorbar_right_rgb(overlay, vmin=0.0, vmax=1.0)
 
-    lcr_overlay_path = outdir / f"{base_name}_lcr_overlay_withbar.jpg"
-    cv2.imwrite(str(lcr_overlay_path), overlay_withbar)
-    return heatmap_path, lcr_overlay_path
+    overlay_path = outdir / f"{base_name}_heatmap_overlay.jpg"
+    cv2.imwrite(str(overlay_path), overlay_withbar)
 
+    return heatmap_path, overlay_path
+
+# ============================
 # Resumen final
+# ============================
 def build_inference_summary(
     image_path: Path,
     ckpt_path: Path,
@@ -451,16 +512,15 @@ def build_inference_summary(
     results: List[Dict[str, Any]],
     input_mode: str,
     fusion: str,
-    soft: bool,
     sigma: float,
     csv_path: Path,
     xlsx_path: Path | None,
     overlay_path: Path,
     html_img_path: Path,
-    tsne_csv_path: Path,
-    tsne_html_path: Path,
+    tsne_csv_path: Path | None,
+    tsne_html_path: Path | None,
     heatmap_path: Path,
-    lcr_overlay_path: Path,
+    heatmap_overlay_path: Path,
     global_metrics: Dict[str, Any],
 ) -> Dict[str, Any]:
     n_total = len(results)
@@ -479,15 +539,14 @@ def build_inference_summary(
         "out_dir": str(outdir.resolve()),
         "csv": str(csv_path),
         "xlsx": str(xlsx_path) if xlsx_path is not None else None,
-        "overlay": str(overlay_path),
+        "classification_overlay": str(overlay_path),
         "html_img": str(html_img_path),
-        "tsne_csv": str(tsne_csv_path),
-        "tsne_html": str(tsne_html_path),
+        "tsne_csv": str(tsne_csv_path) if tsne_csv_path is not None else None,
+        "tsne_html": str(tsne_html_path) if tsne_html_path is not None else None,
         "heatmap": str(heatmap_path),
-        "lcr_overlay": str(lcr_overlay_path),
+        "heatmap_overlay": str(heatmap_overlay_path),
         "input_mode": input_mode,
         "fusion": fusion,
-        "soft": bool(soft),
         "sigma": float(sigma),
         **global_metrics,
     }
@@ -496,53 +555,3 @@ def save_summary_json(summary: Dict[str, Any], outdir: Path) -> Path:
     out_path = outdir / "summary.json"
     out_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return out_path
-
-
-
-# Aquí todo lo de outputs y postproceso.
-
-# Contenido
-
-# softmax_np
-
-# write_tsne_html_with_search
-
-# gaussian2d si la mantienes
-
-# attach_colorbar_right_gray
-
-# attach_colorbar_right_rgb
-
-# guardado de CSV/XLSX
-
-# overlay coloreado
-
-# HTML interactivo
-
-# t-SNE
-
-# heatmap
-
-# métricas globales
-
-# summary.json
-
-# Funciones clave
-
-# Yo separaría bastante:
-
-# save_roi_results_table(df, outdir, base)
-
-# save_classification_overlay(...)
-
-# save_interactive_points_html(...)
-
-# run_tsne_analysis(...)
-
-# build_heatmap(...)
-
-# compute_global_metrics(...)
-
-# save_summary(...)
-
-# Idea

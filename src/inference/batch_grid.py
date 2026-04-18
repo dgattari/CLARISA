@@ -1,20 +1,20 @@
 
-# src/inference/batch_grid.py -> Ejecución por lote y grid final.
+# src/inference/batch_grid.py
 
 """
 batch_grid.py
 -------------
-Ejecución por lote de la inferencia MARTA sobre un conjunto de secciones y
+Ejecucion por lote de la inferencia MARTA sobre un conjunto de secciones y
 montaje final de un grid de overlays.
 
 Responsabilidades:
-  - descubrir imágenes en una carpeta
-  - ordenarlas por número de sección
-  - ejecutar inferencia sección a sección
+  - descubrir imagenes en una carpeta
+  - ordenarlas por numero de seccion
+  - ejecutar inferencia seccion a seccion
   - recoger los overlays finales
   - construir el grid combinado
 """
-
+from __future__ import annotations
 import argparse
 import re
 from pathlib import Path
@@ -35,7 +35,7 @@ GRID_ORDER = [
 ]
 
 
- def parse_args():
+def parse_args():
     parser = argparse.ArgumentParser(
         description="Run MARTA inference over a folder and build a grid of overlays."
     )
@@ -70,7 +70,7 @@ def run_batch_grid_inference(
     log(f"[batch] Config path: {config_path}", log_fp)
 
     log("[batch] Discovering section images", log_fp)
-    
+
     images = sorted(
         [p for p in folder_images.iterdir() if p.suffix.lower() in [".tif", ".tiff", ".png", ".jpg", ".jpeg"]],
         key=natural_section_key,
@@ -107,7 +107,6 @@ def run_batch_grid_inference(
         if section_num is not None and overlay_path is not None:
             overlay_map[section_num] = overlay_path
 
-    
     log("[grid] Building combined overlay grid", log_fp)
     grid_path = outdir / "combined_heatmaps_grid.jpg"
     build_grid_from_overlays(overlay_map=overlay_map, out_path=grid_path)
@@ -125,11 +124,13 @@ def run_batch_grid_inference(
     print(f"[OK] Combined grid saved to: {grid_path}")
     return summary
 
+
 def natural_section_key(path: Path):
     m = re.search(r"seccion_(\d+)", path.stem, re.IGNORECASE)
     if m:
         return (0, int(m.group(1)))
     return (1, path.name.lower())
+
 
 def run_single_section_inference(
     image_path: Path,
@@ -148,15 +149,18 @@ def run_single_section_inference(
         config_path=config_path,
     )
 
-    overlay_path = summary.get("lcr_overlay", None)
+    # La clave del summary actual es 'heatmap_overlay' (no 'lcr_overlay' como en
+    # versiones anteriores del pipeline). Este era un bug previo.
+    overlay_path = summary.get("heatmap_overlay", None)
     log(f"[section] Finished {image_path.name}", log_fp)
     if overlay_path is not None:
-        log(f"[section] LCR overlay path: {overlay_path}", log_fp)
+        log(f"[section] Heatmap overlay path: {overlay_path}", log_fp)
 
     return Path(overlay_path) if overlay_path else None
 
+
 def build_grid_from_overlays(
-    overlay_map: dict[int, Path],
+    overlay_map: dict,
     out_path: Path,
     pad: int = 8,
 ) -> Path:
@@ -172,7 +176,7 @@ def build_grid_from_overlays(
 
     if first is None:
         raise RuntimeError("No overlay images found to stitch.")
-    
+
     th, tw = first.shape[:2]
 
     rows_imgs = []
@@ -186,8 +190,8 @@ def build_grid_from_overlays(
                     img = cv2.resize(img, (tw, th), interpolation=cv2.INTER_AREA)
             else:
                 img = np.full((th, tw, 3), 40, dtype=np.uint8)
-                cv2.putText(img, f"Missing seccion_{n}", (20, th//2),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200,200,200), 2, cv2.LINE_AA)
+                cv2.putText(img, f"Missing seccion_{n}", (20, th // 2),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2, cv2.LINE_AA)
             row_imgs.append(img)
         row_cat = cv2.hconcat(row_imgs)
         rows_imgs.append(row_cat)
@@ -195,11 +199,12 @@ def build_grid_from_overlays(
 
     if pad > 0:
         h, w = grid.shape[:2]
-        grid_pad = np.full((h + 3*pad, w + 2*pad, 3), 0, dtype=np.uint8)
-        grid_pad[pad:pad+h, pad:pad+w] = grid
+        grid_pad = np.full((h + 3 * pad, w + 2 * pad, 3), 0, dtype=np.uint8)
+        grid_pad[pad:pad + h, pad:pad + w] = grid
         grid = grid_pad
     cv2.imwrite(str(out_path), grid)
     return out_path
+
 
 def main(
     folder_images: str | Path,
@@ -213,6 +218,7 @@ def main(
         outdir=Path(outdir),
         config_path=Path(config_path),
     )
+
 
 if __name__ == "__main__":
     args = parse_args()

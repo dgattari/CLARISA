@@ -30,7 +30,7 @@ Diseño unificado (sin flag soft/hard):
        - pct_lat_heat_conf : promedio de H(x,y) sobre el área de las ROIs con
                               label asignado
 """
-
+from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
@@ -274,10 +274,25 @@ def save_interactive_roi_html(
         name="ROIs",
     ))
 
+    # Calcular dimensiones manteniendo aspect ratio de la imagen original.
+    # Esto evita que imagenes muy anchas/altas se vean comprimidas en el HTML.
+    max_width = 1200
+    max_height = 900
+    aspect = w / h if h > 0 else 1.0
+
+    if aspect >= max_width / max_height:
+        # Imagen mas ancha que alta -> limita por width
+        plot_width = max_width
+        plot_height = max(1, int(round(max_width / aspect)))
+    else:
+        # Imagen mas alta que ancha -> limita por height
+        plot_height = max_height
+        plot_width = max(1, int(round(max_height * aspect)))
+
     fig.update_yaxes(autorange="reversed")
     fig.update_layout(
-        width=min(1200, w),
-        height=min(900, h),
+        width=plot_width,
+        height=plot_height,
         xaxis=dict(range=[0, w], showgrid=False, visible=False),
         yaxis=dict(range=[0, h], showgrid=False, visible=False),
         title=f"Inferencia — ROIs y probabilidades ({input_mode}/{fusion})",

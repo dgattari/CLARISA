@@ -1,9 +1,11 @@
 
 # src/utils/config.py
-
-from dataclasses import dataclass
+from __future__ import annotations
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import List
 import yaml
+
 
 @dataclass
 class DataSplitConfig:
@@ -26,12 +28,13 @@ class DataSplitConfig:
         self.random_seed = int(self.random_seed)
         self.test_size = float(self.test_size)
         self.val_size_within_trainval = float(self.val_size_within_trainval)
-        
+
         if self.manual_split is None:
             self.manual_split = {}
 
+
 @dataclass
-class TrainConfig:  
+class TrainConfig:
     split_tag: str = "default_split"
     experiment_tag: str = "default"
 
@@ -99,6 +102,7 @@ class TrainConfig:
         self.expert_mode = bool(self.expert_mode)
         self.use_precomputed_split = bool(self.use_precomputed_split)
 
+
 @dataclass
 class InferenceConfig:
     resize_to: int = 384
@@ -110,8 +114,36 @@ class InferenceConfig:
     soft: bool = False
     sigma: float = 128.0
 
+    # Crop sizes (in pixels) used at inference time.
+    # Scaled proportionally to the target image resolution to preserve
+    # the physical field of view captured during training.
+    # Training defaults: crop_local=256, crop_context=512.
+    # If None, the internal defaults for the input_mode are used.
+    crop_local: int | None = None
+    crop_context: int | None = None
+
+    # ROI detection parameters (thresholding + morphology).
+    # Training defaults: thresh_value=180, kernel_open=9, kernel_dilate=5.
+    # If any is None, the internal default of detect_all_regions is used.
+    thresh_value: int | None = None
+    kernel_open: int | None = None
+    kernel_dilate: int | None = None
+
     random_seed: int = 42
     save_excel: bool = True
+
+    def __post_init__(self):
+        if self.crop_local is not None:
+            self.crop_local = int(self.crop_local)
+        if self.crop_context is not None:
+            self.crop_context = int(self.crop_context)
+        if self.thresh_value is not None:
+            self.thresh_value = int(self.thresh_value)
+        if self.kernel_open is not None:
+            self.kernel_open = int(self.kernel_open)
+        if self.kernel_dilate is not None:
+            self.kernel_dilate = int(self.kernel_dilate)
+
 
 def load_data_split_config(config_path: str | Path) -> DataSplitConfig:
     with open(config_path, "r", encoding="utf-8") as f:
@@ -122,14 +154,13 @@ def load_data_split_config(config_path: str | Path) -> DataSplitConfig:
 
     return DataSplitConfig(**cfg_dict)
 
+
 def load_train_config(config_path: str | Path) -> TrainConfig:
-    """
-    Lee un YAML y construye TrainConfig.
-    """
     with open(config_path, "r", encoding="utf-8") as f:
         cfg_dict = yaml.safe_load(f)
 
     return TrainConfig(**cfg_dict)
+
 
 def load_inference_config(config_path: str | Path) -> InferenceConfig:
     with open(config_path, "r", encoding="utf-8") as f:
@@ -137,10 +168,8 @@ def load_inference_config(config_path: str | Path) -> InferenceConfig:
 
     return InferenceConfig(**cfg_dict)
 
+
 def build_train_run_name(cfg: TrainConfig) -> str:
-    """
-    Construye un nombre corto y legible para la corrida.
-    """
     if cfg.head_kind == "logreg":
         return f"logreg_{cfg.input_mode}_{cfg.fusion}"
 

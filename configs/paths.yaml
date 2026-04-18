@@ -1,7 +1,7 @@
 
 # configs/paths.yaml
 
-#data_root: /scratch/jsanchoz/MARTA/data
-dataset_dir: /scratch/jsanchoz/MARTA/data/dataset
-images_dir: /scratch/jsanchoz/MARTA/data/images
-experiments_dir: /scratch/jsanchoz/MARTA/experiments
+#data_root: C:/Users/dgattari/OneDrive - Universidad Austral/MARTA IA/EfficientNetv2/Paper/Repo/MARTA/data
+dataset_dir: C:/Users/dgattari/OneDrive - Universidad Austral/MARTA IA/EfficientNetv2/Paper/Repo/MARTA/data/dataset
+images_dir: C:/Users/dgattari/OneDrive - Universidad Austral/MARTA IA/EfficientNetv2/Paper/Repo/MARTA/data/images
+experiments_dir: C:/Users/dgattari/OneDrive - Universidad Austral/MARTA IA/EfficientNetv2/Paper/Repo/MARTA/experiments

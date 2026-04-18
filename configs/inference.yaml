@@ -8,13 +8,94 @@
 #   - global metrics (both area-based and heatmap-based)
 
 resize_to: 384
-threshold: 0.50      # minimum confidence to assign class 0 or 1
+#threshold: 0.5      # minimum confidence to assign class 0 or 1
+#expand: 40           # bbox expansion (px) before centering ROI window
+
+threshold: 0.5     # minimum confidence to assign class 0 or 1
 expand: 40           # bbox expansion (px) before centering ROI window
 
+
+# ==========================================================================
+# ROI detection (thresholding + morphological operations)
+# ==========================================================================
+# These parameters control how CX43-positive regions are detected in the
+# target image, before any classification is performed. They should be
+# tuned to match the intensity and spatial characteristics of the target
+# image, which depend on staining quality, microscope settings, and
+# exposure.
+#
+# thresh_value: intensity threshold (0-255) used to binarize the grayscale
+#   image. Pixels with intensity above this value are considered as
+#   CX43-positive.
+#     - Lower values (e.g. 100-150) if the staining is weaker, the image
+#       is darker, or CX43 expression is reduced and manchas are dimmer.
+#     - Higher values (e.g. 200+) if the staining is strong, the image is
+#       bright, or to suppress background noise.
+#   Training default: 180.
+#
+# kernel_open: size (px) of the square structuring element used for the
+#   morphological OPENING operation. Opening removes small bright
+#   artifacts and disconnects thin bridges between regions.
+#     - Larger kernels remove more small artifacts but may also remove
+#       real small manchas.
+#     - Set to 1 (1x1 kernel) to DISABLE the opening operation entirely
+#       (the 1x1 kernel acts as identity).
+#   Training default: 9.
+#
+# kernel_dilate: size (px) of the square structuring element used for the
+#   morphological DILATION operation. Dilation enlarges detected regions,
+#   which helps recover manchas that were partially eroded by the opening
+#   and can merge nearby disconnected fragments into single ROIs.
+#     - Larger kernels produce larger, more merged ROIs.
+#     - Set to 1 (1x1 kernel) to DISABLE the dilation operation entirely.
+#   Training default: 5.
+#
+# Practical guidance:
+#   - If too many small/noisy detections: increase kernel_open or
+#     increase thresh_value.
+#   - If real CX43 regions are missed: decrease thresh_value or
+#     decrease kernel_open.
+#   - If manchas appear split into multiple ROIs: increase kernel_dilate.
+#   - If ROIs merge incorrectly across different cells: decrease
+#     kernel_dilate.
+# Default:
+# 	thresh_value: 180
+# 	kernel_open: 9
+# 	kernel_dilate: 5
+thresh_value: 150
+kernel_open: 9
+kernel_dilate: 5
+
+
+# ==========================================================================
+# Crop sizes (in pixels)
+# ==========================================================================
+# ROI window sizes extracted around each detected CX43-positive region
+# before being fed to the classifier. They must be scaled proportionally
+# to the imaging resolution of the target image, relative to the training
+# resolution, so that the physical field of view seen by the model is
+# preserved:
+#
+#     crop_size_new = crop_size_training * (res_training / res_new)
+#
+# where res is px per micrometer. Training used crop_local = 256 and
+# crop_context = 512. If both fields are omitted (or set to null), the
+# method falls back to the training defaults defined internally for the
+# input_mode of the loaded checkpoint.
+#
+# Example for a target image with 75% of the training resolution:
+#   crop_local: 192
+#   crop_context: 384
+#
+crop_local: 256
+crop_context: 512
+
+# ==========================================================================
 # Heatmap interpolation
-# ---------------------
-# sigma: standard deviation (in pixels) of the Gaussian kernel used for the
-# spatial interpolation of ROI-level probabilities into a continuous heatmap.
+# ==========================================================================
+# sigma: standard deviation (in pixels) of the Gaussian kernel used for
+# the spatial interpolation of ROI-level probabilities into a continuous
+# heatmap.
 #
 # The default value (126 px) was derived from the ROI density observed in
 # the images analyzed in this work (~6e-5 ROIs/px^2) using the formula:
@@ -34,7 +115,8 @@ expand: 40           # bbox expansion (px) before centering ROI window
 #   - smaller k -> more localized maps, may retain individual ROI structure
 #   - larger k  -> smoother, more regionalized maps
 #
-sigma: 126.0
+#sigma: 126.0
+sigma: 126
 
 perplexity: 30.0     # t-SNE perplexity (only used if t-SNE is enabled)
 

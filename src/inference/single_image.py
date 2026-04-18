@@ -4,26 +4,18 @@
 """
 single_image.py
 ---------------
-Inferencia principal de MARTA sobre una imagen única a partir de un checkpoint
-y una configuración YAML.
+Inferencia principal de MARTA sobre una imagen unica a partir de un
+checkpoint y una configuracion YAML.
 
-Diseño unificado (sin flag soft/hard): el método siempre entrega los
-siguientes outputs para cada imagen procesada:
-
-  1) heatmap continuo de lateralización (interpolación Gaussiana)
+El metodo siempre entrega los siguientes outputs para cada imagen:
+  1) heatmap continuo de lateralizacion (interpolacion Gaussiana)
   2) classification overlay (ROIs rellenas con su label asignado)
-  3) Métricas primarias A (basadas en área):
-       - pct_lat_area_all  : % del área CX43 clasificada como lateralizada,
-                             sobre el área total de ROIs detectadas.
-       - pct_lat_area_conf : % del área CX43 clasificada como lateralizada,
-                             sobre el área de ROIs con label asignado
-                             (excluye indeterminadas).
-  4) Métricas complementarias B (basadas en heatmap):
-       - pct_lat_heat_all  : promedio del heatmap H(x,y) sobre el área total
-                             de ROIs detectadas.
-       - pct_lat_heat_conf : promedio del heatmap H(x,y) sobre el área de
-                             ROIs con label asignado.
+  3) Metricas primarias A (basadas en area):
+       - pct_lat_area_all, pct_lat_area_conf
+  4) Metricas complementarias B (basadas en heatmap):
+       - pct_lat_heat_all, pct_lat_heat_conf
 """
+from __future__ import annotations
 import argparse
 from pathlib import Path
 
@@ -51,6 +43,7 @@ from .analysis import (
     save_summary_json,
 )
 
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Run MARTA inference on a single image from a YAML config."
@@ -65,6 +58,7 @@ def parse_args():
         help="Path to inference config YAML file.",
     )
     return parser.parse_args()
+
 
 def run_single_image_inference(
     image_path: Path,
@@ -90,9 +84,19 @@ def run_single_image_inference(
     image_bgr, gray = load_image_and_gray(image_path)
 
     log("[roi] Detecting candidate regions", log_fp)
+    log(
+        f"[roi] thresh_value={infer_cfg.thresh_value} "
+        f"kernel_open={infer_cfg.kernel_open} "
+        f"kernel_dilate={infer_cfg.kernel_dilate} "
+        f"expand={infer_cfg.expand}",
+        log_fp,
+    )
     _, rois, areas, contours = detect_all_regions(
         gray,
         expand_pixels=infer_cfg.expand,
+        thresh_value=infer_cfg.thresh_value,
+        kernel_open=infer_cfg.kernel_open,
+        kernel_dilate=infer_cfg.kernel_dilate,
     )
     log(f"[roi] Regions detected: {len(rois)}", log_fp)
 
@@ -101,6 +105,11 @@ def run_single_image_inference(
     input_mode = train_cfg.get("input_mode", "256")
     fusion = train_cfg.get("fusion", "single")
     log(f"[model] input_mode={input_mode} fusion={fusion}", log_fp)
+    log(
+        f"[model] crop_local={infer_cfg.crop_local} "
+        f"crop_context={infer_cfg.crop_context}",
+        log_fp,
+    )
 
     log("[infer] Running ROI-level inference", log_fp)
     results, feats_all = run_roi_inference(
@@ -208,6 +217,7 @@ def run_single_image_inference(
 
     return summary
 
+
 def main(
     image_path: str | Path,
     ckpt_path: str | Path,
@@ -220,6 +230,7 @@ def main(
         outdir=Path(outdir),
         config_path=config_path,
     )
+
 
 if __name__ == "__main__":
     args = parse_args()

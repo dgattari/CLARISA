@@ -1,13 +1,17 @@
-# MARTA
+# CLARISA
 Computational pipeline to detect and spatially quantify the lateral redistribution of CX43 in cardiac tissue, generating probability maps, classification overlays, and global lateralization metrics.
 
 ---
 
 > Publication: **link coming soon**
 
-<!-- Add main figure from the paper here -->
-
 ---
+
+<p align="center">
+  <img src="docs/Figure 2.png" alt="Figure 2. CLARISA method overview" width="100%">
+</p>
+
+*Figure 2. Overview of the CLARISA method.*
 
 ## Table of contents
 - [Installation](#installation)
@@ -39,11 +43,11 @@ Computational pipeline to detect and spatially quantify the lateral redistributi
 
 ## Installation
 ```bash
-git clone https://github.com/dgattari/MARTA.git
-cd MARTA
+git clone https://github.com/dgattari/CLARISA.git
+cd CLARISA
 
-conda create -n marta python=3.10
-conda activate marta
+conda create -n clarisa python=3.10
+conda activate clarisa
 pip install -r requirements.txt
 ```
 
@@ -76,7 +80,7 @@ The training module is intended to learn a classifier that distinguishes ROI pat
 Starting from `.spydata` annotations and their corresponding images, the pipeline builds ROI-level samples, uses a **precomputed train/validation/test split**, and trains the classifier in three stages.
 
 ### Data split policy
-MARTA uses a precomputed data split that is created once and then reused consistently in:
+CLARISA uses a precomputed data split that is created once and then reused consistently in:
 
 - standard classifier training
 - hyperparameter tuning
@@ -136,7 +140,7 @@ dropout: 0.5
 Outputs are saved in:
 
 ```text
-experiments/marta_classifier/<run_name_timestamp>/
+experiments/clarisa_classifier/<run_name_timestamp>/
 ```
 
 Typical outputs include:
@@ -194,7 +198,7 @@ See:
 `docs/EXPERT_TRACKING.md`
 
 ### Hyperparameter tuning
-A dedicated hyperparameter tuning workflow is available for controlled architecture screening and fine-tuning optimization of the MARTA classifier.
+A dedicated hyperparameter tuning workflow is available for controlled architecture screening and fine-tuning optimization of the CLARISA classifier.
 
 Hyperparameter tuning reuses the same precomputed split used by standard training, so all trials are evaluated on exactly the same train / validation partitions.
 
@@ -204,7 +208,7 @@ For methodology, configuration, outputs, and execution examples, see:
 ---
 
 ## Inference
-The inference module applies a trained MARTA checkpoint to new cardiac tissue images to detect ROIs, classify them, and summarize the spatial distribution of CX43 across the image.
+The inference module applies a trained CLARISA checkpoint to new cardiac tissue images to detect ROIs, classify them, and summarize the spatial distribution of CX43 across the image.
 
 For each processed image, the pipeline produces four unified outputs:
 
@@ -221,7 +225,7 @@ This repository provides a ready-to-use trained model via the `/trained_model/` 
 
 Due to file size limitations, the model checkpoint must be downloaded separately from Hugging Face:
 
-👉 https://huggingface.co/jsanchoz/marta-cx43-slide-classifier
+👉 https://huggingface.co/jsanchoz/clarisa-cx43-slide-classifier
 
 After downloading, place the checkpoint file at:
 
@@ -465,12 +469,9 @@ expert_annotations.csv
 expert heatmap + overlay + metrics
 ```
 
----
-
-Note for developers: legacy code from earlier versions may be kept in a separate archival folder (for example, `old_code`) for reference, but it is not part of the current supported or reproducible pipeline.
 
 ## Contact and support
-For questions about the method, codebase, or usage of MARTA, please contact:
+For questions about the method, codebase, or usage of CLARISA, please contact:
 
 - Daniel Eduardo Gattari — DGattari@austral.edu.ar
 - Joseba Sancho-Zamora — jsanchoz@unav.es

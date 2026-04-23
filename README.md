@@ -8,7 +8,7 @@ Computational pipeline to detect and spatially quantify the lateral redistributi
 ---
 
 <p align="center">
-  <img src="docs/figure2_method.png" alt="Figure 2. CLARISA method overview" width="100%">
+  <img src="docs/Figure_2.png" alt="Figure 2. CLARISA method overview" width="100%">
 </p>
 
 *Figure 2. Overview of the CLARISA method.*

@@ -3,7 +3,7 @@ Computational pipeline to detect and spatially quantify the lateral redistributi
 
 ---
 
-> 📄 Publication: **link coming soon**  
+> 📄 Preprint: https://doi.org/10.20944/preprints202605.0043.v1  
 > 📦 Dataset and images available at Zenodo (DOI): https://doi.org/10.5281/zenodo.19664102
 ---
 

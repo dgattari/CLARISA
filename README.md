@@ -225,7 +225,7 @@ This repository provides a ready-to-use trained model via the `/trained_model/` 
 
 Due to file size limitations, the model checkpoint must be downloaded separately from Hugging Face:
 
-👉 https://huggingface.co/jsanchoz/clarisa-cx43-slide-classifier
+👉 https://huggingface.co/jsanchoz/clarisa-cx43-classifier
 
 After downloading, place the checkpoint file at:
 
